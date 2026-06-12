@@ -1,0 +1,41 @@
+name: Release Epoxy
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "notes=**Epoxy v$VERSION** — Hermes Agent Free-Tier Proxy
+
+          ## Changes
+          $(git log --oneline $(git tag --sort=-creatordate | head -2 | tail -1)...HEAD 2>/dev/null || git log --oneline --max-count=20)
+
+          ## Usage
+          \`\`\`bash
+          docker pull ghcr.io/instax-dutta/epoxy:$VERSION
+          \`\`\`
+
+          Import \`egg-epoxy.json\` into your Pterodactyl panel." >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Epoxy v${{ steps.notes.outputs.version }}
+          body: ${{ steps.notes.outputs.notes }}
+          generate_release_notes: false
+          make_latest: true

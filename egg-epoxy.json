@@ -7,7 +7,7 @@
   "exported_at": "2026-06-12T00:00:00+00:00",
   "name": "Epoxy",
   "author": "epoxy@users.noreply.github.com",
-  "description": "Epoxy pools multiple free-tier Groq and Ollama Cloud API keys behind a single OpenAI-compatible endpoint with automatic rotation and cooldown handling. Point Hermes Agent at it via custom_providers.\n\nConfigure API keys via the Startup tab (egg variables below) OR edit /home/container/.env through the File Manager — whichever method you prefer. OS env vars (egg variables) take precedence.\n\nHermes config.yaml:\n  custom_providers:\n    free-pool:\n      base_url: http://<server-ip>:{{SERVER_PORT}}\n\nThen use /model <model-name> in Hermes.\n\nModels:\n  - groq-llama-3.1-8b-instant  (or any Groq model)\n  - ollama-deepseek-v3.1       (or any Ollama model)\n\nPool strategies (GROQ_POOL_STRATEGY / OLLAMA_POOL_STRATEGY):\n  fill_first  — drain first healthy key before moving on\n  round_robin — cycle evenly across all healthy keys (default)\n  least_used  — pick the key with fewest requests\n  random      — random selection among healthy keys\n\nCooldowns:\n  429 (rate limited)  → 1h cooldown on that key\n  402 (billing)       → 24h cooldown\n  401 (auth error)    → immediate rotation",
+  "description": "Epoxy pools multiple free-tier Groq and Ollama Cloud API keys behind a single OpenAI-compatible endpoint with automatic rotation and cooldown handling.\n\nAPI keys are stored in /home/container/.env. After creating the server, go to the File Manager, open .env, and paste your comma-separated API keys. Then restart the container (or just send a request — keys reload automatically on change).\n\nPoint Hermes Agent at this proxy:\n  custom_providers:\n    free-pool:\n      base_url: http://<server-ip>:{{SERVER_PORT}}\n\nThen in Hermes: /model groq-llama-3.1-8b-instant or /model ollama-deepseek-v3.1\n\nPool strategies:\n  fill_first  — drain first healthy key before moving on\n  round_robin — cycle evenly across all healthy keys (default)\n  least_used  — pick the key with fewest requests\n  random      — random selection among healthy keys\n\nCooldowns: 429→1h, 402→24h, 401→immediate rotation",
   "features": null,
   "docker_images": {
     "Epoxy": "ghcr.io/instax-dutta/epoxy:latest"
@@ -22,32 +22,12 @@
   },
   "scripts": {
     "installation": {
-      "script": "echo \"Epoxy — all dependencies are baked into the image.\"\necho \"Set GROQ_API_KEYS and OLLAMA_API_KEYS in the Startup tab,\"\necho \"or edit /home/container/.env via the File Manager.\"\necho \"After changing keys, restart the container.\"",
+      "script": "echo \"Epoxy — all dependencies baked into the image.\"\necho \"After install, edit /home/container/.env via File Manager\"\necho \"to add your GROQ_API_KEYS and/or OLLAMA_API_KEYS.\"\necho \"Then restart the server.\"",
       "container": "ghcr.io/instax-dutta/epoxy:latest",
       "entrypoint": "ash"
     }
   },
   "variables": [
-    {
-      "name": "Groq API Keys",
-      "description": "Comma-separated Groq API keys. Leave empty to use /home/container/.env via File Manager instead.",
-      "env_variable": "GROQ_API_KEYS",
-      "default_value": "",
-      "user_viewable": true,
-      "user_editable": true,
-      "rules": "nullable|string",
-      "field_type": "text"
-    },
-    {
-      "name": "Ollama Cloud API Keys",
-      "description": "Comma-separated Ollama Cloud API keys. Leave empty to use /home/container/.env via File Manager instead.",
-      "env_variable": "OLLAMA_API_KEYS",
-      "default_value": "",
-      "user_viewable": true,
-      "user_editable": true,
-      "rules": "nullable|string",
-      "field_type": "text"
-    },
     {
       "name": "Groq Pool Strategy",
       "description": "Key selection strategy: fill_first, round_robin, least_used, random.",
@@ -69,20 +49,10 @@
       "field_type": "text"
     },
     {
-      "name": "Server Port",
-      "description": "Internal port (Pterodactyl allocation will map to this).",
-      "env_variable": "PORT",
-      "default_value": "8080",
-      "user_viewable": true,
-      "user_editable": false,
-      "rules": "required|numeric|between:1024,65535",
-      "field_type": "text"
-    },
-    {
       "name": "Startup Command",
-      "description": "Leave at default.",
+      "description": "Leave at default. Entrypoint handles port via SERVER_PORT env.",
       "env_variable": "STARTUP_CMD",
-      "default_value": "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8080}",
+      "default_value": "uvicorn server:app --host 0.0.0.0 --port ${SERVER_PORT:-8080}",
       "user_viewable": false,
       "user_editable": false,
       "rules": "required|string",

@@ -23,6 +23,8 @@ ENV PATH=/home/container/.local/bin:$PATH \
 USER container
 WORKDIR /home/container
 
+# Pterodactyl maps SERVER_PORT to the container;
+# entrypoint.sh resolves SERVER_PORT → PORT → 8080
 EXPOSE 8080
 
 ENTRYPOINT ["/home/container/entrypoint.sh"]

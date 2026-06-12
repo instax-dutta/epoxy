@@ -240,7 +240,7 @@ ollama_pool = CredentialPool(
 )
 
 print(
-    f" Hermes Free-Tier Proxy starting on http://127.0.0.1:8080 — "
+    f" Epoxy starting — "
     f"Groq: {groq_pool.total_keys} keys ({groq_pool.strategy.value}), "
     f"Ollama: {ollama_pool.total_keys} keys ({ollama_pool.strategy.value})"
 )
@@ -654,4 +654,5 @@ async def handle_chat(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8080)
+    port = int(os.environ.get("SERVER_PORT", os.environ.get("PORT", "8080")))
+    uvicorn.run(app, host="0.0.0.0", port=port)
