@@ -135,7 +135,7 @@ class CredentialPool:
                     key.mark_rate_limited()
                 else:
                     key.has_retried_429 = True
-            elif status_code == 402:
+            elif status_code in (402, 403):
                 key.mark_exhausted()
             elif status_code == 401:
                 key.mark_auth_error()
@@ -202,7 +202,7 @@ async def _reload_pools_if_env_changed(*, force: bool = False):
             ollama_pool = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
             mistral_pool = CredentialPool("mistral", _parse_keys("MISTRAL_API_KEYS"), _resolve_strategy("MISTRAL"))
             groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
-            ollama_client = ProviderClient(ollama_pool, "https://api.ollama.com", "/api/chat")
+            ollama_client = ProviderClient(ollama_pool, "https://api.ollama.com", "/v1/chat/completions")
             mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
             _last_env_mtime = mtime
             print(f" Epoxy: reloaded pools — Groq: {groq_pool.total_keys}, Ollama: {ollama_pool.total_keys}, Mistral: {mistral_pool.total_keys}")
@@ -386,7 +386,7 @@ class ProviderClient:
                     timeout=60.0,
                 )
 
-            if response.status_code in (429, 402, 401):
+            if response.status_code in (403, 429, 402, 401):
                 status = response.status_code
                 await response.aclose()
                 await client.aclose()
@@ -459,7 +459,7 @@ class ProviderClient:
 
 
 groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
-ollama_client = ProviderClient(ollama_pool, "https://api.ollama.com", "/api/chat")
+ollama_client = ProviderClient(ollama_pool, "https://api.ollama.com", "/v1/chat/completions")
 mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
 
 @asynccontextmanager
@@ -546,10 +546,10 @@ async def handle_chat(request: Request):
     elif provider == "mistral":
         return await mistral_client.send_request(body, {"Content-Type": "application/json"}, stream)
     else:
-        ollama_body = transform_to_ollama_request(body)
-        return await ollama_client.send_request(
-            ollama_body, {"Content-Type": "application/json"}, stream, is_ollama=True,
-        )
+        model = body.get("model", "")
+        if model.startswith("ollama-"):
+            body["model"] = model[len("ollama-"):]
+        return await ollama_client.send_request(body, {"Content-Type": "application/json"}, stream)
 
 
 if __name__ == "__main__":
