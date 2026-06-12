@@ -4,13 +4,18 @@ import time
 import uuid
 import asyncio
 import random
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from dotenv import load_dotenv
 import httpx
+
+logger = logging.getLogger(__name__)
 
 ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(ENV_PATH)
@@ -50,7 +55,9 @@ class PoolKey:
         if self.status == KeyStatus.OK:
             return True
         if self.status in (KeyStatus.RATE_LIMITED, KeyStatus.EXHAUSTED):
-            return time.monotonic() >= self.cooldown_until
+            if time.monotonic() >= self.cooldown_until:
+                self.mark_ok()
+                return True
         return False
 
     def mark_ok(self):
@@ -68,7 +75,7 @@ class PoolKey:
 
     def mark_auth_error(self):
         self.status = KeyStatus.AUTH_ERROR
-        self.cooldown_until = time.monotonic() + COOLDOWN_SECONDS[KeyStatus.AUTH_ERROR]
+        self.cooldown_until = 0
 
 
 class CredentialPool:
@@ -293,7 +300,7 @@ async def ollama_stream_generator(client: httpx.AsyncClient, response: httpx.Res
         await client.aclose()
 
 
-async def openai_stream_generator(client: httpx.AsyncClient, response: httpx.Response):
+async def sse_passthrough_generator(client: httpx.AsyncClient, response: httpx.Response):
     try:
         async for line in response.aiter_lines():
             if line:
@@ -342,98 +349,103 @@ class ProviderClient:
         self.base_url = base_url
         self.api_path = api_path
 
+    @staticmethod
+    def _log_error(provider_name: str, key_status: KeyStatus):
+        msg = {
+            KeyStatus.RATE_LIMITED: "key rate limited (429)",
+            KeyStatus.EXHAUSTED: "key exhausted (402)",
+            KeyStatus.AUTH_ERROR: "key auth error (401)",
+        }.get(key_status, f"key error ({key_status})")
+        print(f" {provider_name} {msg}. Rotating...")
+
+    async def _try_key(
+        self, body: dict, headers: dict, stream: bool, is_ollama: bool, key: PoolKey
+    ) -> tuple:
+        headers_snap = {**headers, "Authorization": f"Bearer {key.value}"}
+        client = httpx.AsyncClient()
+        response = None
+        try:
+            if stream:
+                req = client.build_request(
+                    "POST",
+                    f"{self.base_url}{self.api_path}",
+                    json=body,
+                    headers=headers_snap,
+                )
+                response = await client.send(req, stream=True, timeout=60.0)
+            else:
+                response = await client.post(
+                    f"{self.base_url}{self.api_path}",
+                    json=body,
+                    headers=headers_snap,
+                    timeout=60.0,
+                )
+
+            if response.status_code in (429, 402, 401):
+                status = response.status_code
+                await response.aclose()
+                await client.aclose()
+                await self.pool.mark_error(key, status)
+                return None, True
+
+            response.raise_for_status()
+            await self.pool.mark_success(key)
+
+            if stream:
+                gen = (
+                    ollama_stream_generator(client, response)
+                    if is_ollama
+                    else sse_passthrough_generator(client, response)
+                )
+                return StreamingResponse(gen, media_type="text/event-stream"), False
+            else:
+                data = response.json()
+                await client.aclose()
+                result = transform_from_ollama_response(data) if is_ollama else data
+                return result, False
+
+        except httpx.HTTPStatusError as e:
+            if response is not None:
+                await response.aclose()
+            await client.aclose()
+            status = e.response.status_code
+            if status in (429, 402, 401):
+                await self.pool.mark_error(key, status)
+                print(f" {self.pool.name} HTTP error {status}. Rotating...")
+                return None, True
+            raise HTTPException(status_code=status, detail=str(e))
+
+        except Exception as e:
+            if response is not None:
+                try:
+                    await response.aclose()
+                except Exception:
+                    logger.exception("Error closing response during cleanup")
+            await client.aclose()
+            raise HTTPException(status_code=500, detail=str(e))
+
     async def send_request(
         self, body: dict, headers: dict, stream: bool, is_ollama: bool = False
     ):
         max_retries = max(self.pool.total_keys * 2, 1)
-        for attempt in range(max_retries):
-            key = await self.pool.select()
+        key = None
+        for _ in range(max_retries):
+            if key is None or key.status != KeyStatus.OK:
+                key = await self.pool.select()
             if key is None:
                 raise HTTPException(
                     status_code=429,
                     detail=f"All {self.pool.name} keys exhausted or on cooldown.",
                 )
 
-            headers_snap = {**headers}
-            headers_snap["Authorization"] = f"Bearer {key.value}"
+            result, should_retry = await self._try_key(body, headers, stream, is_ollama, key)
+            if not should_retry:
+                return result
 
-            client = httpx.AsyncClient()
-            response = None
-            try:
-                if stream:
-                    req = client.build_request(
-                        "POST",
-                        f"{self.base_url}{self.api_path}",
-                        json=body,
-                        headers=headers_snap,
-                    )
-                    response = await client.send(req, stream=True, timeout=60.0)
-
-                    if response.status_code in (429, 402, 401):
-                        status_code = response.status_code
-                        await response.aclose()
-                        await client.aclose()
-                        await self.pool.mark_error(key, status_code)
-                        if status_code == 429:
-                            print(f" {self.pool.name} key rate limited (429). Rotating...")
-                        elif status_code == 402:
-                            print(f" {self.pool.name} key exhausted (402). Rotating...")
-                        else:
-                            print(f" {self.pool.name} key auth error (401). Rotating...")
-                        await asyncio.sleep(0.5)
-                        continue
-
-                    response.raise_for_status()
-                    await self.pool.mark_success(key)
-                    gen = ollama_stream_generator(client, response) if is_ollama else openai_stream_generator(client, response)
-                    return StreamingResponse(gen, media_type="text/event-stream")
-                else:
-                    response = await client.post(
-                        f"{self.base_url}{self.api_path}",
-                        json=body,
-                        headers=headers_snap,
-                        timeout=60.0,
-                    )
-
-                    if response.status_code in (429, 402, 401):
-                        status_code = response.status_code
-                        await client.aclose()
-                        await self.pool.mark_error(key, status_code)
-                        if status_code == 429:
-                            print(f" {self.pool.name} key rate limited (429). Rotating...")
-                        elif status_code == 402:
-                            print(f" {self.pool.name} key exhausted (402). Rotating...")
-                        else:
-                            print(f" {self.pool.name} key auth error (401). Rotating...")
-                        await asyncio.sleep(0.5)
-                        continue
-
-                    response.raise_for_status()
-                    await self.pool.mark_success(key)
-                    data = response.json()
-                    await client.aclose()
-                    return transform_from_ollama_response(data) if is_ollama else data
-
-            except httpx.HTTPStatusError as e:
-                if response is not None:
-                    await response.aclose()
-                await client.aclose()
-
-                status_code = e.response.status_code
-                if status_code in (429, 402, 401):
-                    await self.pool.mark_error(key, status_code)
-                    print(f" {self.pool.name} HTTP error {status_code}. Rotating...")
-                    continue
-                raise HTTPException(status_code=status_code, detail=str(e))
-
-            except Exception as e:
-                if response is not None:
-                    try:
-                        await response.aclose()
-                    except Exception:
-                        pass
-                await client.aclose()
-                raise HTTPException(status_code=500, detail=str(e))
+            self._log_error(self.pool.name, key.status)
+            if key.status != KeyStatus.OK:
+                key = None
+            await asyncio.sleep(0.5)
 
         raise HTTPException(
             status_code=429,
@@ -445,12 +457,13 @@ groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat
 ollama_client = ProviderClient(ollama_pool, "https://ollama.com", "/api/chat")
 mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
 
-app = FastAPI(title="Epoxy", version="1.2.0")
-
-
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     print(f" Epoxy: watching {ENV_PATH} for changes")
+    yield
+
+
+app = FastAPI(title="Epoxy", version="1.2.0", lifespan=lifespan)
 
 
 @app.post("/reload")
