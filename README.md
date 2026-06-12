@@ -1,12 +1,12 @@
 # Epoxy — Hermes Agent Free-Tier Proxy
 
-Pool multiple free-tier **Groq** and **Ollama Cloud** API keys behind a single OpenAI-compatible endpoint with automatic key rotation, cooldown handling, and cross-provider fallback.
+Pool free-tier API keys from **Groq**, **Ollama Cloud**, and **Mistral** behind a single OpenAI-compatible endpoint with automatic key rotation, cooldown handling, and cross-provider fallback.
 
 ## Quick Start
 
 ```bash
 cp .env.example .env
-# Edit .env with your comma-separated API keys
+# Add your keys (GROQ_API_KEYS, OLLAMA_API_KEYS, MISTRAL_API_KEYS)
 docker run -d --name epoxy -p 8080:8080 --env-file .env ghcr.io/instax-dutta/epoxy:latest
 ```
 
@@ -18,24 +18,31 @@ custom_providers:
     base_url: http://<your-server-ip>:8080
 ```
 
-Then `/model groq-llama-3.1-8b-instant` or `/model ollama-deepseek-v3.1` in Hermes.
+Then `/model groq-llama-3.1-8b-instant`, `/model ollama-minimax-m3:cloud`, or `/model mistral-large-latest`.
+
+## Supported Models
+
+| Model name | Provider |
+|---|---|
+| `groq-llama-3.1-8b-instant` | Groq |
+| `ollama-deepseek-v3.1` | Ollama Cloud |
+| `ollama-minimax-m3:cloud` | Ollama Cloud (MiniMax M3) |
+| `mistral-large-latest` | Mistral |
+| Any model with `llama-3`, `mixtral`, `gemma` | Groq |
+| Any model with `deepseek-v3/4`, `qwen3`, `kimi-`, `minimax-` | Ollama Cloud |
+| Any model with `mistral-`, `codestral-` | Mistral |
 
 ## Pterodactyl Deployment
 
 1. Import `egg-epoxy.json` into your panel
-2. Create server — Pterodactyl allocates the port via `SERVER_PORT`
-3. Go to **File Manager**, open `/home/container/.env`, paste your keys
-4. Restart the server (or just send a request — keys hot-reload on change)
-
-Keys are managed exclusively via `.env`. No need to use the Startup tab.
+2. Create server — port allocated via `SERVER_PORT`
+3. **File Manager** → edit `/home/container/.env` → paste keys
+4. Restart (or just send a request — keys hot-reload on change)
 
 ## Rotation Strategies
 
-Set via `GROQ_POOL_STRATEGY` / `OLLAMA_POOL_STRATEGY`:
-- `round_robin` — cycle evenly (default)
-- `fill_first` — drain one key before moving on
-- `least_used` — pick least-used key
-- `random` — random pick
+Set via `GROQ_POOL_STRATEGY`, `OLLAMA_POOL_STRATEGY`, `MISTRAL_POOL_STRATEGY`:
+- `round_robin` (default), `fill_first`, `least_used`, `random`
 
 ## License
 

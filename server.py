@@ -4,7 +4,7 @@ import time
 import uuid
 import asyncio
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from fastapi import FastAPI, Request, HTTPException
@@ -17,43 +17,7 @@ load_dotenv(ENV_PATH)
 _last_env_mtime: float = ENV_PATH.stat().st_mtime if ENV_PATH.exists() else 0
 _env_reload_lock = asyncio.Lock()
 
-# ─────────────────────────────────────────────
-# Hermes Agent Free-Tier Proxy
-#
-# Point Hermes Agent at this proxy to pool
-# multiple free-tier API keys (Groq + Ollama
-# Cloud) behind a single OpenAI-compatible
-# endpoint. Key rotation and cooldown handling
-# are automatic.
-#
-# Hermes config.yaml:
-#   custom_providers:
-#     free-pool:
-#       base_url: http://127.0.0.1:8080
-#
-# Then use /model groq-llama-3.1-8b-instant
-# or /model ollama-deepseek-v3.1 in Hermes.
-#
-# Strategies (set via GROQ_POOL_STRATEGY /
-# OLLAMA_POOL_STRATEGY env vars):
-#   fill_first   — drain the first healthy key before moving on
-#   round_robin  — cycle evenly across all healthy keys
-#   least_used   — pick the key with fewest requests
-#   random       — pick randomly among healthy keys
-#
-# Per-key state:
-#   ok           — healthy, ready for use
-#   rate_limited — 429, cooldown 1h
-#   exhausted    — billing/402, cooldown 24h
-#   auth_error   — 401, rotate immediately
-#
-# Flow per call:
-#   1. select() a healthy key
-#   2. on 429: retry same key once; second 429 → mark rate_limited → rotate
-#   3. on 402: mark exhausted → rotate immediately
-#   4. on 401: mark auth_error → rotate immediately
-#   5. all keys unhealthy → raise AllExhausted
-# ─────────────────────────────────────────────
+PROVIDER_NAMES = ["groq", "ollama", "mistral"]
 
 class PoolStrategy(str, Enum):
     FILL_FIRST = "fill_first"
@@ -153,22 +117,6 @@ class CredentialPool:
             key.request_count += 1
             return key
 
-    async def snapshot_current_key(self) -> str | None:
-        async with self._lock:
-            if not self._keys:
-                return None
-            key = self._keys[self._round_robin_index % len(self._keys)]
-            return key.value
-
-    async def select_for_retry(self, failed_key: PoolKey) -> PoolKey | None:
-        async with self._lock:
-            healthy = [k for k in self._keys if k.is_healthy and k is not failed_key]
-            if not healthy:
-                return None
-            key = healthy[0]
-            key.request_count += 1
-            return key
-
     async def mark_success(self, key: PoolKey):
         async with self._lock:
             key.mark_ok()
@@ -184,12 +132,6 @@ class CredentialPool:
                 key.mark_exhausted()
             elif status_code == 401:
                 key.mark_auth_error()
-            else:
-                pass
-
-    async def all_exhausted(self) -> bool:
-        async with self._lock:
-            return all(not k.is_healthy for k in self._keys)
 
     def get_status(self) -> dict:
         return {
@@ -207,10 +149,6 @@ class CredentialPool:
         }
 
 
-# ─────────────────────────────────────────────
-# API Key Parsing
-# ─────────────────────────────────────────────
-
 def _parse_keys(env_var: str) -> list[str]:
     raw = os.environ.get(env_var, "")
     return [k.strip() for k in raw.split(",") if k.strip()]
@@ -224,35 +162,21 @@ def _resolve_strategy(name: str) -> PoolStrategy:
         return PoolStrategy.ROUND_ROBIN
 
 
-# ─────────────────────────────────────────────
-# Provider Pools
-# ─────────────────────────────────────────────
-
-groq_pool = CredentialPool(
-    "groq",
-    _parse_keys("GROQ_API_KEYS"),
-    _resolve_strategy("GROQ"),
-)
-ollama_pool = CredentialPool(
-    "ollama",
-    _parse_keys("OLLAMA_API_KEYS"),
-    _resolve_strategy("OLLAMA"),
-)
+groq_pool = CredentialPool("groq", _parse_keys("GROQ_API_KEYS"), _resolve_strategy("GROQ"))
+ollama_pool = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
+mistral_pool = CredentialPool("mistral", _parse_keys("MISTRAL_API_KEYS"), _resolve_strategy("MISTRAL"))
 
 print(
     f" Epoxy starting — "
     f"Groq: {groq_pool.total_keys} keys ({groq_pool.strategy.value}), "
-    f"Ollama: {ollama_pool.total_keys} keys ({ollama_pool.strategy.value})"
+    f"Ollama: {ollama_pool.total_keys} keys ({ollama_pool.strategy.value}), "
+    f"Mistral: {mistral_pool.total_keys} keys ({mistral_pool.strategy.value})"
 )
 
 
-# ─────────────────────────────────────────────
-# Hot-reload pools when .env changes on disk
-# (e.g. edited via Pterodactyl File Manager)
-# ─────────────────────────────────────────────
-
 async def _reload_pools_if_env_changed(*, force: bool = False):
-    global _last_env_mtime, groq_pool, ollama_pool, groq_client, ollama_client
+    global _last_env_mtime, groq_pool, ollama_pool, mistral_pool
+    global groq_client, ollama_client, mistral_client
     try:
         mtime = ENV_PATH.stat().st_mtime
     except OSError:
@@ -267,21 +191,17 @@ async def _reload_pools_if_env_changed(*, force: bool = False):
             if mtime <= _last_env_mtime:
                 return
             load_dotenv(ENV_PATH, override=True)
-            new_groq = CredentialPool("groq", _parse_keys("GROQ_API_KEYS"), _resolve_strategy("GROQ"))
-            new_ollama = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
-            groq_pool = new_groq
-            ollama_pool = new_ollama
+            groq_pool = CredentialPool("groq", _parse_keys("GROQ_API_KEYS"), _resolve_strategy("GROQ"))
+            ollama_pool = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
+            mistral_pool = CredentialPool("mistral", _parse_keys("MISTRAL_API_KEYS"), _resolve_strategy("MISTRAL"))
             groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
             ollama_client = ProviderClient(ollama_pool, "https://ollama.com", "/api/chat")
+            mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
             _last_env_mtime = mtime
-            print(f" Epoxy: reloaded pools from .env — Groq: {groq_pool.total_keys} keys, Ollama: {ollama_pool.total_keys} keys")
+            print(f" Epoxy: reloaded pools — Groq: {groq_pool.total_keys}, Ollama: {ollama_pool.total_keys}, Mistral: {mistral_pool.total_keys}")
         except Exception as e:
             print(f" Epoxy: error reloading .env: {e}")
 
-
-# ─────────────────────────────────────────────
-# OpenAI ↔ Ollama Format Translation
-# ─────────────────────────────────────────────
 
 def transform_to_ollama_request(openai_body: dict) -> dict:
     model_name = openai_body.get("model", "deepseek-v3.1")
@@ -333,17 +253,10 @@ def transform_from_ollama_response(ollama_resp: dict) -> dict:
         "usage": {
             "prompt_tokens": ollama_resp.get("prompt_eval_count", 0),
             "completion_tokens": ollama_resp.get("eval_count", 0),
-            "total_tokens": (
-                ollama_resp.get("prompt_eval_count", 0)
-                + ollama_resp.get("eval_count", 0)
-            ),
+            "total_tokens": ollama_resp.get("prompt_eval_count", 0) + ollama_resp.get("eval_count", 0),
         },
     }
 
-
-# ─────────────────────────────────────────────
-# Streaming Generators
-# ─────────────────────────────────────────────
 
 async def ollama_stream_generator(client: httpx.AsyncClient, response: httpx.Response):
     created_time = int(time.time())
@@ -380,7 +293,7 @@ async def ollama_stream_generator(client: httpx.AsyncClient, response: httpx.Res
         await client.aclose()
 
 
-async def groq_stream_generator(client: httpx.AsyncClient, response: httpx.Response):
+async def openai_stream_generator(client: httpx.AsyncClient, response: httpx.Response):
     try:
         async for line in response.aiter_lines():
             if line:
@@ -390,15 +303,16 @@ async def groq_stream_generator(client: httpx.AsyncClient, response: httpx.Respo
         await client.aclose()
 
 
-# ─────────────────────────────────────────────
-# Provider Routing
-# ─────────────────────────────────────────────
-
 def get_provider(model_name: str) -> str:
     model_name_lower = model_name.lower()
 
+    mistral_keywords = ["mistral-", "codestral-", "open-mistral", "open-mixtral", "open-codestral"]
+    for kw in mistral_keywords:
+        if kw in model_name_lower:
+            return "mistral"
+
     ollama_keywords = [
-        "gpt-oss", "kimi-", "minimax-", "glm-", "qwen3",
+        "gpt-oss", "kimi-", "minimax-", "minimax-m3", "glm-", "qwen3",
         "cogito-", "deepseek-v4", "deepseek-v3",
     ]
     for kw in ollama_keywords:
@@ -415,14 +329,11 @@ def get_provider(model_name: str) -> str:
     if ":" in model_name or "cloud" in model_name_lower:
         return "ollama"
 
-    if ollama_pool.total_keys > 0 and groq_pool.total_keys == 0:
-        return "ollama"
+    available = [p for p in PROVIDER_NAMES if _parse_keys(f"{p.upper()}_API_KEYS")]
+    if available:
+        return available[0]
     return "groq"
 
-
-# ─────────────────────────────────────────────
-# Provider HTTP Client Wrapper with Pool Rotation
-# ─────────────────────────────────────────────
 
 class ProviderClient:
     def __init__(self, pool: CredentialPool, base_url: str, api_path: str):
@@ -433,7 +344,7 @@ class ProviderClient:
     async def send_request(
         self, body: dict, headers: dict, stream: bool, is_ollama: bool = False
     ):
-        max_retries = self.pool.total_keys * 2
+        max_retries = max(self.pool.total_keys * 2, 1)
         for attempt in range(max_retries):
             key = await self.pool.select()
             if key is None:
@@ -443,12 +354,7 @@ class ProviderClient:
                 )
 
             headers_snap = {**headers}
-            if "Authorization" not in headers_snap:
-                headers_snap["Authorization"] = f"Bearer {key.value}"
-            elif "Bearer " in headers_snap.get("Authorization", ""):
-                pass
-            else:
-                headers_snap["Authorization"] = f"Bearer {key.value}"
+            headers_snap["Authorization"] = f"Bearer {key.value}"
 
             client = httpx.AsyncClient()
             response = None
@@ -478,12 +384,8 @@ class ProviderClient:
 
                     response.raise_for_status()
                     await self.pool.mark_success(key)
-                    return StreamingResponse(
-                        ollama_stream_generator(client, response)
-                        if is_ollama
-                        else groq_stream_generator(client, response),
-                        media_type="text/event-stream",
-                    )
+                    gen = ollama_stream_generator(client, response) if is_ollama else openai_stream_generator(client, response)
+                    return StreamingResponse(gen, media_type="text/event-stream")
                 else:
                     response = await client.post(
                         f"{self.base_url}{self.api_path}",
@@ -538,48 +440,32 @@ class ProviderClient:
         )
 
 
-groq_client = ProviderClient(
-    groq_pool,
-    "https://api.groq.com",
-    "/openai/v1/chat/completions",
-)
-ollama_client = ProviderClient(
-    ollama_pool,
-    "https://ollama.com",
-    "/api/chat",
-)
+groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
+ollama_client = ProviderClient(ollama_pool, "https://ollama.com", "/api/chat")
+mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
 
-
-# ─────────────────────────────────────────────
-# FastAPI App
-# ─────────────────────────────────────────────
-
-app = FastAPI(title="Hermes Free-Tier Proxy", version="1.1.0")
+app = FastAPI(title="Epoxy", version="1.2.0")
 
 
 @app.on_event("startup")
 async def startup():
     print(f" Epoxy: watching {ENV_PATH} for changes")
 
+
 @app.post("/reload")
 async def reload_pools():
     await _reload_pools_if_env_changed(force=True)
     return JSONResponse({
         "status": "ok",
-        "providers": {
-            "groq": groq_pool.get_status(),
-            "ollama": ollama_pool.get_status(),
-        },
+        "providers": {p: globals()[f"{p}_pool"].get_status() for p in PROVIDER_NAMES},
     })
+
 
 @app.get("/health")
 async def health():
     return JSONResponse({
         "status": "ok",
-        "providers": {
-            "groq": groq_pool.get_status(),
-            "ollama": ollama_pool.get_status(),
-        },
+        "providers": {p: globals()[f"{p}_pool"].get_status() for p in PROVIDER_NAMES},
     })
 
 
@@ -590,6 +476,10 @@ async def list_models():
         models.append({"id": "groq-llama-3.1-8b-instant", "object": "model", "created": int(time.time()), "owned_by": "groq"})
     if ollama_pool.total_keys > 0:
         models.append({"id": "ollama-deepseek-v3.1", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-minimax-m3:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+    if mistral_pool.total_keys > 0:
+        models.append({"id": "mistral-large-latest", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
+        models.append({"id": "mistral-small-latest", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
     return JSONResponse({"object": "list", "data": models})
 
 
@@ -597,12 +487,9 @@ async def list_models():
 async def capabilities():
     return JSONResponse({
         "object": "list",
-        "platform": "hermes-free-pool",
+        "platform": "epoxy",
         "auth": {"type": "bearer", "required": False},
-        "features": {
-            "chat_completions": True,
-            "streaming": True,
-        },
+        "features": {"chat_completions": True, "streaming": True},
     })
 
 
@@ -613,42 +500,28 @@ async def handle_chat(request: Request):
 
     model_name = body.get("model", "")
     if not model_name:
-        model_name = "deepseek-v3.1" if ollama_pool.total_keys > 0 else "llama-3.1-8b-instant"
+        available = [p for p in PROVIDER_NAMES if globals()[f"{p}_pool"].total_keys > 0]
+        model_name = f"{available[0]}-default" if available else "groq-llama-3.1-8b-instant"
         body["model"] = model_name
 
     provider = get_provider(model_name)
     stream = body.get("stream", False)
 
-    if provider == "groq":
-        if groq_pool.total_keys == 0:
-            if ollama_pool.total_keys > 0:
-                provider = "ollama"
-            else:
-                raise HTTPException(
-                    status_code=503,
-                    detail="No API keys configured for any provider.",
-                )
-
-    if provider == "ollama":
-        if ollama_pool.total_keys == 0:
-            if groq_pool.total_keys > 0:
-                provider = "groq"
-            else:
-                raise HTTPException(
-                    status_code=503,
-                    detail="No API keys configured for any provider.",
-                )
+    # fallback chain: if the routed provider has no keys, try others
+    if globals()[f"{provider}_pool"].total_keys == 0:
+        fallback = [p for p in PROVIDER_NAMES if globals()[f"{p}_pool"].total_keys > 0]
+        if not fallback:
+            raise HTTPException(status_code=503, detail="No API keys configured for any provider.")
+        provider = fallback[0]
 
     if provider == "groq":
-        ollama_body = body
-        return await groq_client.send_request(ollama_body, {"Content-Type": "application/json"}, stream)
+        return await groq_client.send_request(body, {"Content-Type": "application/json"}, stream)
+    elif provider == "mistral":
+        return await mistral_client.send_request(body, {"Content-Type": "application/json"}, stream)
     else:
         ollama_body = transform_to_ollama_request(body)
         return await ollama_client.send_request(
-            ollama_body,
-            {"Content-Type": "application/json"},
-            stream,
-            is_ollama=True,
+            ollama_body, {"Content-Type": "application/json"}, stream, is_ollama=True,
         )
 
 

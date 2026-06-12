@@ -1,5 +1,5 @@
 {
-  "_comment": "Epoxy — Hermes Agent Free-Tier Proxy. Pools multiple Groq + Ollama Cloud API keys behind a single OpenAI-compatible endpoint with automatic rotation and cooldown handling.",
+  "_comment": "Epoxy — Hermes Agent Free-Tier Proxy. Pools Groq, Ollama Cloud, and Mistral API keys behind a single OpenAI-compatible endpoint with automatic rotation and cooldown handling.",
   "meta": {
     "version": "PTDL_v2",
     "update_url": null
@@ -7,7 +7,7 @@
   "exported_at": "2026-06-12T00:00:00+00:00",
   "name": "Epoxy",
   "author": "epoxy@users.noreply.github.com",
-  "description": "Epoxy pools multiple free-tier Groq and Ollama Cloud API keys behind a single OpenAI-compatible endpoint with automatic rotation and cooldown handling.\n\nAPI keys are stored in /home/container/.env. After creating the server, go to the File Manager, open .env, and paste your comma-separated API keys. Then restart the container (or just send a request — keys reload automatically on change).\n\nPoint Hermes Agent at this proxy:\n  custom_providers:\n    free-pool:\n      base_url: http://<server-ip>:{{SERVER_PORT}}\n\nThen in Hermes: /model groq-llama-3.1-8b-instant or /model ollama-deepseek-v3.1\n\nPool strategies:\n  fill_first  — drain first healthy key before moving on\n  round_robin — cycle evenly across all healthy keys (default)\n  least_used  — pick the key with fewest requests\n  random      — random selection among healthy keys\n\nCooldowns: 429→1h, 402→24h, 401→immediate rotation",
+  "description": "Epoxy pools free-tier API keys from Groq, Ollama Cloud, and Mistral behind a single OpenAI-compatible endpoint with automatic key rotation and cooldown handling.\n\nAPI keys are stored in /home/container/.env. After creating the server, go to the File Manager, open .env, and paste your comma-separated API keys for any of the three providers.\n\nPoint Hermes Agent at this proxy:\n  custom_providers:\n    free-pool:\n      base_url: http://<server-ip>:{{SERVER_PORT}}\n\nModels:\n  groq-llama-3.1-8b-instant    (or any Groq model)\n  ollama-deepseek-v3.1         (or any Ollama model)\n  ollama-minimax-m3:cloud      (MiniMax via Ollama Cloud)\n  mistral-large-latest         (or any Mistral model)\n\nPool strategies (GROQ_POOL_STRATEGY, OLLAMA_POOL_STRATEGY, MISTRAL_POOL_STRATEGY):\n  fill_first / round_robin / least_used / random\n\nCooldowns: 429→1h, 402→24h, 401→immediate rotation",
   "features": null,
   "docker_images": {
     "Epoxy": "ghcr.io/instax-dutta/epoxy:latest"
@@ -22,7 +22,7 @@
   },
   "scripts": {
     "installation": {
-      "script": "echo \"Epoxy — all dependencies baked into the image.\"\necho \"After install, edit /home/container/.env via File Manager\"\necho \"to add your GROQ_API_KEYS and/or OLLAMA_API_KEYS.\"\necho \"Then restart the server.\"",
+      "script": "echo \"Epoxy — deps baked into image.\"\necho \"Edit /home/container/.env via File Manager to set\"\necho \"GROQ_API_KEYS, OLLAMA_API_KEYS, and/or MISTRAL_API_KEYS.\"",
       "container": "ghcr.io/instax-dutta/epoxy:latest",
       "entrypoint": "ash"
     }
@@ -30,7 +30,7 @@
   "variables": [
     {
       "name": "Groq Pool Strategy",
-      "description": "Key selection strategy: fill_first, round_robin, least_used, random.",
+      "description": "fill_first, round_robin, least_used, random",
       "env_variable": "GROQ_POOL_STRATEGY",
       "default_value": "round_robin",
       "user_viewable": true,
@@ -40,7 +40,7 @@
     },
     {
       "name": "Ollama Pool Strategy",
-      "description": "Key selection strategy: fill_first, round_robin, least_used, random.",
+      "description": "fill_first, round_robin, least_used, random",
       "env_variable": "OLLAMA_POOL_STRATEGY",
       "default_value": "round_robin",
       "user_viewable": true,
@@ -49,8 +49,18 @@
       "field_type": "text"
     },
     {
+      "name": "Mistral Pool Strategy",
+      "description": "fill_first, round_robin, least_used, random",
+      "env_variable": "MISTRAL_POOL_STRATEGY",
+      "default_value": "round_robin",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:fill_first,round_robin,least_used,random",
+      "field_type": "text"
+    },
+    {
       "name": "Startup Command",
-      "description": "Leave at default. Entrypoint handles port via SERVER_PORT env.",
+      "description": "Leave at default.",
       "env_variable": "STARTUP_CMD",
       "default_value": "uvicorn server:app --host 0.0.0.0 --port ${SERVER_PORT:-8080}",
       "user_viewable": false,
