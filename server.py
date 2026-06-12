@@ -312,8 +312,9 @@ def get_provider(model_name: str) -> str:
             return "mistral"
 
     ollama_keywords = [
-        "gpt-oss", "kimi-", "minimax-", "minimax-m3", "glm-", "qwen3",
-        "cogito-", "deepseek-v4", "deepseek-v3",
+        "gpt-oss", "kimi-", "minimax-", "minimax-m3", "minimax-m2.7",
+        "glm-", "qwen3", "cogito-", "nemotron-",
+        "deepseek-v4", "deepseek-v3",
     ]
     for kw in ollama_keywords:
         if kw in model_name_lower:
@@ -477,6 +478,9 @@ async def list_models():
     if ollama_pool.total_keys > 0:
         models.append({"id": "ollama-deepseek-v3.1", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
         models.append({"id": "ollama-minimax-m3:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-minimax-m2.7:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-glm-5.1:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-nemotron-3-super:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
     if mistral_pool.total_keys > 0:
         models.append({"id": "mistral-large-latest", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
         models.append({"id": "mistral-small-latest", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
