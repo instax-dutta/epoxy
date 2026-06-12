@@ -202,7 +202,7 @@ async def _reload_pools_if_env_changed(*, force: bool = False):
             ollama_pool = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
             mistral_pool = CredentialPool("mistral", _parse_keys("MISTRAL_API_KEYS"), _resolve_strategy("MISTRAL"))
             groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
-            ollama_client = ProviderClient(ollama_pool, "https://ollama.com", "/api/chat")
+            ollama_client = ProviderClient(ollama_pool, "https://api.ollama.com", "/v1/chat/completions")
             mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
             _last_env_mtime = mtime
             print(f" Epoxy: reloaded pools — Groq: {groq_pool.total_keys}, Ollama: {ollama_pool.total_keys}, Mistral: {mistral_pool.total_keys}")
@@ -461,7 +461,7 @@ class ProviderClient:
 
 
 groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
-ollama_client = ProviderClient(ollama_pool, "https://ollama.com", "/api/chat")
+ollama_client = ProviderClient(ollama_pool, "https://api.ollama.com", "/v1/chat/completions")
 mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
 
 @asynccontextmanager
@@ -548,10 +548,10 @@ async def handle_chat(request: Request):
     elif provider == "mistral":
         return await mistral_client.send_request(body, {"Content-Type": "application/json"}, stream)
     else:
-        ollama_body = transform_to_ollama_request(body)
-        return await ollama_client.send_request(
-            ollama_body, {"Content-Type": "application/json"}, stream, is_ollama=True,
-        )
+        model = body.get("model", "")
+        if model.startswith("ollama-"):
+            body["model"] = model[len("ollama-"):]
+        return await ollama_client.send_request(body, {"Content-Type": "application/json"}, stream)
 
 
 if __name__ == "__main__":
