@@ -202,7 +202,7 @@ async def _reload_pools_if_env_changed(*, force: bool = False):
             ollama_pool = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
             mistral_pool = CredentialPool("mistral", _parse_keys("MISTRAL_API_KEYS"), _resolve_strategy("MISTRAL"))
             groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
-            ollama_client = ProviderClient(ollama_pool, "https://api.ollama.com", "/v1/chat/completions")
+            ollama_client = ProviderClient(ollama_pool, "https://api.ollama.com", "/api/chat")
             mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
             _last_env_mtime = mtime
             print(f" Epoxy: reloaded pools — Groq: {groq_pool.total_keys}, Ollama: {ollama_pool.total_keys}, Mistral: {mistral_pool.total_keys}")
@@ -217,8 +217,6 @@ def transform_to_ollama_request(openai_body: dict) -> dict:
         model_name = model_name[len("ollama-"):]
     if model_name.endswith("-cloud"):
         model_name = model_name[:-len("-cloud")]
-    elif model_name.endswith(":cloud"):
-        model_name = model_name[:-len(":cloud")]
 
     ollama_body = {
         "model": model_name,
@@ -461,7 +459,7 @@ class ProviderClient:
 
 
 groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
-ollama_client = ProviderClient(ollama_pool, "https://api.ollama.com", "/v1/chat/completions")
+ollama_client = ProviderClient(ollama_pool, "https://api.ollama.com", "/api/chat")
 mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
 
 @asynccontextmanager
@@ -548,10 +546,10 @@ async def handle_chat(request: Request):
     elif provider == "mistral":
         return await mistral_client.send_request(body, {"Content-Type": "application/json"}, stream)
     else:
-        model = body.get("model", "")
-        if model.startswith("ollama-"):
-            body["model"] = model[len("ollama-"):]
-        return await ollama_client.send_request(body, {"Content-Type": "application/json"}, stream)
+        ollama_body = transform_to_ollama_request(body)
+        return await ollama_client.send_request(
+            ollama_body, {"Content-Type": "application/json"}, stream, is_ollama=True,
+        )
 
 
 if __name__ == "__main__":
