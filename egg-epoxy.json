@@ -7,10 +7,10 @@
   "exported_at": "2026-06-12T00:00:00+00:00",
   "name": "Epoxy",
   "author": "epoxy@users.noreply.github.com",
-  "description": "Epoxy pools multiple free-tier Groq and Ollama Cloud API keys behind a single OpenAI-compatible endpoint. Point Hermes Agent at it via custom_providers.\n\nHermes config.yaml:\n  custom_providers:\n    free-pool:\n      base_url: http://<server-ip>:{{SERVER_PORT}}\n\nThen use /model <model-name> in Hermes.\n\nModels:\n  - groq-llama-3.1-8b-instant  (or any Groq model)\n  - ollama-deepseek-v3.1       (or any Ollama model)",
+  "description": "Epoxy pools multiple free-tier Groq and Ollama Cloud API keys behind a single OpenAI-compatible endpoint with automatic rotation and cooldown handling. Point Hermes Agent at it via custom_providers.\n\nConfigure API keys via the Startup tab (egg variables below) OR edit /home/container/.env through the File Manager — whichever method you prefer. OS env vars (egg variables) take precedence.\n\nHermes config.yaml:\n  custom_providers:\n    free-pool:\n      base_url: http://<server-ip>:{{SERVER_PORT}}\n\nThen use /model <model-name> in Hermes.\n\nModels:\n  - groq-llama-3.1-8b-instant  (or any Groq model)\n  - ollama-deepseek-v3.1       (or any Ollama model)\n\nPool strategies (GROQ_POOL_STRATEGY / OLLAMA_POOL_STRATEGY):\n  fill_first  — drain first healthy key before moving on\n  round_robin — cycle evenly across all healthy keys (default)\n  least_used  — pick the key with fewest requests\n  random      — random selection among healthy keys\n\nCooldowns:\n  429 (rate limited)  → 1h cooldown on that key\n  402 (billing)       → 24h cooldown\n  401 (auth error)    → immediate rotation",
   "features": null,
   "docker_images": {
-    "ghcr.io": "ghcr.io/<your-org>/epoxy:latest"
+    "Epoxy": "ghcr.io/instax-dutta/epoxy:latest"
   },
   "file_denylist": [],
   "startup": "{{STARTUP_CMD}}",
@@ -22,15 +22,15 @@
   },
   "scripts": {
     "installation": {
-      "script": "# Epoxy — no build step required; the Docker image is pre-built.\n# API keys are configured via the egg variables below.\necho \"Epoxy container started. Configure your API keys in the Startup tab.\"",
-      "container": "ghcr.io/<your-org>/epoxy:latest",
+      "script": "echo \"Epoxy — all dependencies are baked into the image.\"\necho \"Set GROQ_API_KEYS and OLLAMA_API_KEYS in the Startup tab,\"\necho \"or edit /home/container/.env via the File Manager.\"\necho \"After changing keys, restart the container.\"",
+      "container": "ghcr.io/instax-dutta/epoxy:latest",
       "entrypoint": "ash"
     }
   },
   "variables": [
     {
       "name": "Groq API Keys",
-      "description": "Comma-separated list of Groq API keys for round-robin rotation.",
+      "description": "Comma-separated Groq API keys. Leave empty to use /home/container/.env via File Manager instead.",
       "env_variable": "GROQ_API_KEYS",
       "default_value": "",
       "user_viewable": true,
@@ -40,7 +40,7 @@
     },
     {
       "name": "Ollama Cloud API Keys",
-      "description": "Comma-separated list of Ollama Cloud API keys for round-robin rotation.",
+      "description": "Comma-separated Ollama Cloud API keys. Leave empty to use /home/container/.env via File Manager instead.",
       "env_variable": "OLLAMA_API_KEYS",
       "default_value": "",
       "user_viewable": true,
@@ -70,7 +70,7 @@
     },
     {
       "name": "Server Port",
-      "description": "Port the proxy listens on internally.",
+      "description": "Internal port (Pterodactyl allocation will map to this).",
       "env_variable": "PORT",
       "default_value": "8080",
       "user_viewable": true,
@@ -80,7 +80,7 @@
     },
     {
       "name": "Startup Command",
-      "description": "Internal startup override (leave at default).",
+      "description": "Leave at default.",
       "env_variable": "STARTUP_CMD",
       "default_value": "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8080}",
       "user_viewable": false,

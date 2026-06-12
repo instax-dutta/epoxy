@@ -12,7 +12,10 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from dotenv import load_dotenv
 import httpx
 
-load_dotenv(Path(__file__).parent / ".env")
+ENV_PATH = Path(__file__).parent / ".env"
+load_dotenv(ENV_PATH)
+_last_env_mtime: float = ENV_PATH.stat().st_mtime if ENV_PATH.exists() else 0
+_env_reload_lock = asyncio.Lock()
 
 # ─────────────────────────────────────────────
 # Hermes Agent Free-Tier Proxy
@@ -241,6 +244,39 @@ print(
     f"Groq: {groq_pool.total_keys} keys ({groq_pool.strategy.value}), "
     f"Ollama: {ollama_pool.total_keys} keys ({ollama_pool.strategy.value})"
 )
+
+
+# ─────────────────────────────────────────────
+# Hot-reload pools when .env changes on disk
+# (e.g. edited via Pterodactyl File Manager)
+# ─────────────────────────────────────────────
+
+async def _reload_pools_if_env_changed(*, force: bool = False):
+    global _last_env_mtime, groq_pool, ollama_pool, groq_client, ollama_client
+    try:
+        mtime = ENV_PATH.stat().st_mtime
+    except OSError:
+        return
+
+    if not force and mtime <= _last_env_mtime:
+        return
+
+    async with _env_reload_lock:
+        try:
+            mtime = ENV_PATH.stat().st_mtime
+            if mtime <= _last_env_mtime:
+                return
+            load_dotenv(ENV_PATH, override=True)
+            new_groq = CredentialPool("groq", _parse_keys("GROQ_API_KEYS"), _resolve_strategy("GROQ"))
+            new_ollama = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
+            groq_pool = new_groq
+            ollama_pool = new_ollama
+            groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
+            ollama_client = ProviderClient(ollama_pool, "https://ollama.com", "/api/chat")
+            _last_env_mtime = mtime
+            print(f" Epoxy: reloaded pools from .env — Groq: {groq_pool.total_keys} keys, Ollama: {ollama_pool.total_keys} keys")
+        except Exception as e:
+            print(f" Epoxy: error reloading .env: {e}")
 
 
 # ─────────────────────────────────────────────
@@ -521,6 +557,21 @@ ollama_client = ProviderClient(
 app = FastAPI(title="Hermes Free-Tier Proxy", version="1.1.0")
 
 
+@app.on_event("startup")
+async def startup():
+    print(f" Epoxy: watching {ENV_PATH} for changes")
+
+@app.post("/reload")
+async def reload_pools():
+    await _reload_pools_if_env_changed(force=True)
+    return JSONResponse({
+        "status": "ok",
+        "providers": {
+            "groq": groq_pool.get_status(),
+            "ollama": ollama_pool.get_status(),
+        },
+    })
+
 @app.get("/health")
 async def health():
     return JSONResponse({
@@ -557,6 +608,7 @@ async def capabilities():
 
 @app.post("/v1/chat/completions")
 async def handle_chat(request: Request):
+    await _reload_pools_if_env_changed()
     body = await request.json()
 
     model_name = body.get("model", "")
