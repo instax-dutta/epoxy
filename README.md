@@ -18,14 +18,14 @@ custom_providers:
     base_url: http://<your-server-ip>:8080
 ```
 
-Then `/model groq-llama-3.1-8b-instant`, `/model ollama-minimax-m3:cloud`, or `/model mistral-large-latest`.
+Then `/model groq-llama-3.1-8b-instant`, `/model ollama-deepseek-v4-flash:cloud`, or `/model mistral-large-latest`.
 
 ## Supported Models
 
 | Model name | Provider |
 |---|---|
 | `groq-llama-3.1-8b-instant` | Groq |
-| `ollama-deepseek-v3.1` | Ollama Cloud |
+| `ollama-deepseek-v4-flash:cloud` | Ollama Cloud |
 | `ollama-minimax-m3:cloud` | Ollama Cloud (MiniMax M3) |
 | `mistral-large-latest` | Mistral |
 | Any model with `llama-3`, `mixtral`, `gemma` | Groq |

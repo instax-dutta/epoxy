@@ -204,7 +204,7 @@ async def _reload_pools_if_env_changed(*, force: bool = False):
 
 
 def transform_to_ollama_request(openai_body: dict) -> dict:
-    model_name = openai_body.get("model", "deepseek-v3.1")
+    model_name = openai_body.get("model", "deepseek-v4-flash")
     if model_name.endswith("-cloud"):
         model_name = model_name[:-6]
 
@@ -476,7 +476,7 @@ async def list_models():
     if groq_pool.total_keys > 0:
         models.append({"id": "groq-llama-3.1-8b-instant", "object": "model", "created": int(time.time()), "owned_by": "groq"})
     if ollama_pool.total_keys > 0:
-        models.append({"id": "ollama-deepseek-v3.1", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-deepseek-v4-flash:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
         models.append({"id": "ollama-minimax-m3:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
         models.append({"id": "ollama-minimax-m2.7:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
         models.append({"id": "ollama-glm-5.1:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
