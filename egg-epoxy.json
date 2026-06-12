@@ -22,7 +22,7 @@
   },
   "scripts": {
     "installation": {
-      "script": "echo \"Epoxy — deps baked into image.\"\necho \"Edit /home/container/.env via File Manager to set\"\necho \"GROQ_API_KEYS, OLLAMA_API_KEYS, and/or MISTRAL_API_KEYS.\"",
+      "script": "# copy application files from the image into the server data directory\n# (Pterodactyl mounts this over /home/container/ at runtime)\ncp /home/container/server.py /mnt/server/\ncp /home/container/entrypoint.sh /mnt/server/\ncp /home/container/.env.example /mnt/server/\nchmod +x /mnt/server/entrypoint.sh\necho \"Epoxy files installed.\"",
       "container": "ghcr.io/instax-dutta/epoxy:latest",
       "entrypoint": "ash"
     }
