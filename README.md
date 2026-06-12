@@ -184,7 +184,11 @@ Multi-arch images are available for `linux/amd64` and `linux/arm64`.
 
 ### Pterodactyl
 
-1. Import [`egg-epoxy.json`](./egg-epoxy.json) into your panel.
+1. Import the egg from URL:
+   ```
+   https://raw.githubusercontent.com/instax-dutta/epoxy/main/egg-epoxy.json
+   ```
+   Or download [`egg-epoxy.json`](./egg-epoxy.json) and import it manually.
 2. Create a server — the port is allocated via `SERVER_PORT` (Pterodactyl allocation).
 3. Open **File Manager**, edit `/home/container/.env`, and paste your API keys. **Do not** set keys in Startup variables.
 4. Start the server. Keys hot-reload on file change, so future edits take effect immediately.
