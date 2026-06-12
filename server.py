@@ -367,24 +367,27 @@ class ProviderClient:
         self, body: dict, headers: dict, stream: bool, is_ollama: bool, key: PoolKey
     ) -> tuple:
         headers_snap = {**headers, "Authorization": f"Bearer {key.value}"}
-        client = httpx.AsyncClient(follow_redirects=True)
+        client = httpx.AsyncClient()
         response = None
         try:
-            if stream:
-                req = client.build_request(
-                    "POST",
-                    f"{self.base_url}{self.api_path}",
-                    json=body,
-                    headers=headers_snap,
+
+            async def _do_post(url: str) -> httpx.Response:
+                if stream:
+                    req = client.build_request(
+                        "POST", url, json=body, headers=headers_snap,
+                    )
+                    return await client.send(req, stream=True, timeout=60.0)
+                return await client.post(
+                    url, json=body, headers=headers_snap, timeout=60.0,
                 )
-                response = await client.send(req, stream=True, timeout=60.0)
-            else:
-                response = await client.post(
-                    f"{self.base_url}{self.api_path}",
-                    json=body,
-                    headers=headers_snap,
-                    timeout=60.0,
-                )
+
+            response = await _do_post(f"{self.base_url}{self.api_path}")
+
+            if response.status_code in (301, 302, 307, 308):
+                location = response.headers.get("Location")
+                if location:
+                    await response.aclose()
+                    response = await _do_post(location)
 
             if response.status_code in (403, 429, 402, 401):
                 status = response.status_code
