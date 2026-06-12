@@ -463,7 +463,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="Epoxy", version="1.2.0", lifespan=lifespan)
+app = FastAPI(title="Epoxy", version="1.2.1", lifespan=lifespan)
 
 
 @app.post("/reload")
