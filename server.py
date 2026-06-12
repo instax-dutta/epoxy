@@ -475,6 +475,10 @@ async def list_models():
     models = []
     if groq_pool.total_keys > 0:
         models.append({"id": "groq-llama-3.1-8b-instant", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-llama-3.3-70b-versatile", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-gemma2-9b-it", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-deepseek-r1-distill-llama-70b", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-compound-beta", "object": "model", "created": int(time.time()), "owned_by": "groq"})
     if ollama_pool.total_keys > 0:
         models.append({"id": "ollama-deepseek-v4-flash:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
         models.append({"id": "ollama-minimax-m3:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
@@ -484,6 +488,7 @@ async def list_models():
     if mistral_pool.total_keys > 0:
         models.append({"id": "mistral-large-latest", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
         models.append({"id": "mistral-small-latest", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
+        models.append({"id": "open-mistral-nemo", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
     return JSONResponse({"object": "list", "data": models})
 
 
