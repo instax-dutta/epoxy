@@ -202,7 +202,7 @@ async def _reload_pools_if_env_changed(*, force: bool = False):
             ollama_pool = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
             mistral_pool = CredentialPool("mistral", _parse_keys("MISTRAL_API_KEYS"), _resolve_strategy("MISTRAL"))
             groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
-ollama_client = ProviderClient(ollama_pool, "https://ollama.com", "/v1/chat/completions")
+            ollama_client = ProviderClient(ollama_pool, "https://ollama.com", "/v1/chat/completions")
             mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
             _last_env_mtime = mtime
             print(f" Epoxy: reloaded pools — Groq: {groq_pool.total_keys}, Ollama: {ollama_pool.total_keys}, Mistral: {mistral_pool.total_keys}")
