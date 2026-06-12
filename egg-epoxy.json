@@ -1,0 +1,92 @@
+{
+  "_comment": "Epoxy — Hermes Agent Free-Tier Proxy. Pools multiple Groq + Ollama Cloud API keys behind a single OpenAI-compatible endpoint with automatic rotation and cooldown handling.",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-06-12T00:00:00+00:00",
+  "name": "Epoxy",
+  "author": "epoxy@users.noreply.github.com",
+  "description": "Epoxy pools multiple free-tier Groq and Ollama Cloud API keys behind a single OpenAI-compatible endpoint. Point Hermes Agent at it via custom_providers.\n\nHermes config.yaml:\n  custom_providers:\n    free-pool:\n      base_url: http://<server-ip>:{{SERVER_PORT}}\n\nThen use /model <model-name> in Hermes.\n\nModels:\n  - groq-llama-3.1-8b-instant  (or any Groq model)\n  - ollama-deepseek-v3.1       (or any Ollama model)",
+  "features": null,
+  "docker_images": {
+    "ghcr.io": "ghcr.io/<your-org>/epoxy:latest"
+  },
+  "file_denylist": [],
+  "startup": "{{STARTUP_CMD}}",
+  "config": {
+    "files": "{}",
+    "startup": "{\"done\":\"Uvicorn running on\"}",
+    "logs": "{}",
+    "stop": "^C"
+  },
+  "scripts": {
+    "installation": {
+      "script": "# Epoxy — no build step required; the Docker image is pre-built.\n# API keys are configured via the egg variables below.\necho \"Epoxy container started. Configure your API keys in the Startup tab.\"",
+      "container": "ghcr.io/<your-org>/epoxy:latest",
+      "entrypoint": "ash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Groq API Keys",
+      "description": "Comma-separated list of Groq API keys for round-robin rotation.",
+      "env_variable": "GROQ_API_KEYS",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "Ollama Cloud API Keys",
+      "description": "Comma-separated list of Ollama Cloud API keys for round-robin rotation.",
+      "env_variable": "OLLAMA_API_KEYS",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "Groq Pool Strategy",
+      "description": "Key selection strategy: fill_first, round_robin, least_used, random.",
+      "env_variable": "GROQ_POOL_STRATEGY",
+      "default_value": "round_robin",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:fill_first,round_robin,least_used,random",
+      "field_type": "text"
+    },
+    {
+      "name": "Ollama Pool Strategy",
+      "description": "Key selection strategy: fill_first, round_robin, least_used, random.",
+      "env_variable": "OLLAMA_POOL_STRATEGY",
+      "default_value": "round_robin",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:fill_first,round_robin,least_used,random",
+      "field_type": "text"
+    },
+    {
+      "name": "Server Port",
+      "description": "Port the proxy listens on internally.",
+      "env_variable": "PORT",
+      "default_value": "8080",
+      "user_viewable": true,
+      "user_editable": false,
+      "rules": "required|numeric|between:1024,65535",
+      "field_type": "text"
+    },
+    {
+      "name": "Startup Command",
+      "description": "Internal startup override (leave at default).",
+      "env_variable": "STARTUP_CMD",
+      "default_value": "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8080}",
+      "user_viewable": false,
+      "user_editable": false,
+      "rules": "required|string",
+      "field_type": "text"
+    }
+  ]
+}
