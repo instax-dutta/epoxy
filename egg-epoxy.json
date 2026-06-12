@@ -22,8 +22,8 @@
   },
   "scripts": {
     "installation": {
-      "script": "# copy application files from the image into the server data directory\n# (Pterodactyl mounts this over /home/container/ at runtime)\ncp /home/container/server.py /mnt/server/\ncp /home/container/entrypoint.sh /mnt/server/\ncp /home/container/.env.example /mnt/server/\nchmod +x /mnt/server/entrypoint.sh\necho \"Epoxy files installed.\"",
-      "container": "ghcr.io/instax-dutta/epoxy:latest",
+      "script": "set -x\nset -e\n\napk add --no-cache curl\n\n# fetch the latest release zip from GitHub\nREPO=\"instax-dutta/epoxy\"\nVERSION=$(curl -sL \"https://api.github.com/repos/$REPO/releases/latest\" | grep -o '\"tag_name\": \"[^\"]*\"' | cut -d'\"' -f4 || echo \"main\")\n\nif [ \"$VERSION\" = \"main\" ]; then\n  URL=\"https://github.com/$REPO/archive/refs/heads/main.zip\"\nelse\n  URL=\"https://github.com/$REPO/releases/download/$VERSION/epoxy-${VERSION#v}.zip\"\nfi\n\ncurl -sL \"$URL\" -o /tmp/epoxy.zip\nunzip -o /tmp/epoxy.zip -d /tmp/epoxy-extract/\n\n# find and copy the files (structure differs between tag zip and branch zip)\nif [ -d /tmp/epoxy-extract/epoxy-main ]; then\n  SRC=/tmp/epoxy-extract/epoxy-main\nelif [ -d /tmp/epoxy-extract/epoxy-${VERSION#v} ]; then\n  SRC=/tmp/epoxy-extract/epoxy-${VERSION#v}\nelse\n  # fallback: take whatever single directory is in there\n  SRC=$(find /tmp/epoxy-extract -mindepth 1 -maxdepth 1 -type d | head -1)\nfi\n\ncp \"$SRC/server.py\" /mnt/server/\ncp \"$SRC/entrypoint.sh\" /mnt/server/\ncp \"$SRC/.env.example\" /mnt/server/\ncp \"$SRC/requirements.txt\" /mnt/server/\nchmod +x /mnt/server/entrypoint.sh\n\necho \"Epoxy v${VERSION#v} installed.\"",
+      "container": "alpine:latest",
       "entrypoint": "ash"
     }
   },
