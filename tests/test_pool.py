@@ -210,3 +210,90 @@ async def test_pool_select_after_cooldown_has_retried_reset():
     assert result is key
     assert result.has_retried_429 is False
     assert result.status == KeyStatus.OK
+
+
+def test_transform_to_ollama_request_strips_ollama_prefix():
+    from server import transform_to_ollama_request
+    body = {"model": "ollama-nemotron-3-super:cloud", "messages": [{"role": "user", "content": "hi"}], "stream": False}
+    result = transform_to_ollama_request(body)
+    assert result["model"] == "nemotron-3-super:cloud"
+    assert result["messages"] == body["messages"]
+    assert result["stream"] is False
+
+
+def test_transform_to_ollama_request_maps_options():
+    from server import transform_to_ollama_request
+    body = {"model": "ollama-foo", "messages": [], "temperature": 0.7, "max_tokens": 200, "stream": True}
+    result = transform_to_ollama_request(body)
+    assert result["model"] == "foo"
+    assert result["options"]["temperature"] == 0.7
+    assert result["options"]["num_predict"] == 200
+
+
+def test_transform_from_ollama_response():
+    from server import transform_from_ollama_response
+    ollama_resp = {
+        "model": "nemotron-3-super:cloud",
+        "message": {"role": "assistant", "content": "Hello!"},
+        "done": True,
+        "prompt_eval_count": 10,
+        "eval_count": 20,
+    }
+    result = transform_from_ollama_response(ollama_resp)
+    assert result["object"] == "chat.completion"
+    assert result["choices"][0]["message"]["content"] == "Hello!"
+    assert result["choices"][0]["finish_reason"] == "stop"
+    assert result["usage"]["prompt_tokens"] == 10
+    assert result["usage"]["completion_tokens"] == 20
+    assert result["usage"]["total_tokens"] == 30
+
+
+def test_has_retried_429_reset_on_exhausted():
+    from server import PoolKey
+    key = PoolKey(value="test")
+    key.has_retried_429 = True
+    key.mark_exhausted()
+    assert key.has_retried_429 is False
+
+
+def test_has_retried_429_reset_on_auth_error():
+    from server import PoolKey
+    key = PoolKey(value="test")
+    key.has_retried_429 = True
+    key.mark_auth_error()
+    assert key.has_retried_429 is False
+
+
+@pytest.mark.asyncio
+async def test_sse_passthrough_yields_double_newline():
+    from server import sse_passthrough_generator
+
+    class FakeClient:
+        async def aclose(self):
+            pass
+
+    class FakeResponse:
+        lines = ["data: {\"foo\":\"bar\"}", "", "data: [DONE]"]
+
+        async def aiter_lines(self):
+            for line in self.lines:
+                yield line
+
+        async def aclose(self):
+            pass
+
+    gen = sse_passthrough_generator(FakeClient(), FakeResponse())
+    chunks = [c async for c in gen]
+    assert len(chunks) == 2
+    assert chunks[0] == 'data: {"foo":"bar"}\n\n'
+    assert chunks[1] == "data: [DONE]\n\n"
+
+
+def test_build_state_creates_all_providers():
+    from server import _build_state
+    state = _build_state()
+    assert "pools" in state
+    assert "clients" in state
+    for name in ("groq", "ollama", "mistral"):
+        assert name in state["pools"]
+        assert name in state["clients"]

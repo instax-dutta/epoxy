@@ -19,7 +19,10 @@ logger = logging.getLogger(__name__)
 
 ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(ENV_PATH)
-_last_env_mtime: float = ENV_PATH.stat().st_mtime if ENV_PATH.exists() else 0
+try:
+    _last_env_mtime = ENV_PATH.stat().st_mtime if ENV_PATH.exists() else 0.0
+except OSError:
+    _last_env_mtime = 0.0
 _env_reload_lock = asyncio.Lock()
 
 PROVIDER_NAMES = ["groq", "ollama", "mistral"]
@@ -71,10 +74,12 @@ class PoolKey:
 
     def mark_exhausted(self):
         self.status = KeyStatus.EXHAUSTED
+        self.has_retried_429 = False
         self.cooldown_until = time.monotonic() + COOLDOWN_SECONDS[KeyStatus.EXHAUSTED]
 
     def mark_auth_error(self):
         self.status = KeyStatus.AUTH_ERROR
+        self.has_retried_429 = False
         self.cooldown_until = 0
 
 
@@ -169,21 +174,25 @@ def _resolve_strategy(name: str) -> PoolStrategy:
         return PoolStrategy.ROUND_ROBIN
 
 
-groq_pool = CredentialPool("groq", _parse_keys("GROQ_API_KEYS"), _resolve_strategy("GROQ"))
-ollama_pool = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
-mistral_pool = CredentialPool("mistral", _parse_keys("MISTRAL_API_KEYS"), _resolve_strategy("MISTRAL"))
+def _build_state():
+    groq_pool = CredentialPool("groq", _parse_keys("GROQ_API_KEYS"), _resolve_strategy("GROQ"))
+    ollama_pool = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
+    mistral_pool = CredentialPool("mistral", _parse_keys("MISTRAL_API_KEYS"), _resolve_strategy("MISTRAL"))
+    return {
+        "pools": {"groq": groq_pool, "ollama": ollama_pool, "mistral": mistral_pool},
+        "clients": {
+            "groq": ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions"),
+            "ollama": ProviderClient(ollama_pool, "https://ollama.com", "/api/chat"),
+            "mistral": ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions"),
+        },
+    }
 
-print(
-    f" Epoxy starting — "
-    f"Groq: {groq_pool.total_keys} keys ({groq_pool.strategy.value}), "
-    f"Ollama: {ollama_pool.total_keys} keys ({ollama_pool.strategy.value}), "
-    f"Mistral: {mistral_pool.total_keys} keys ({mistral_pool.strategy.value})"
-)
+
+_provider_state: dict = {}
 
 
 async def _reload_pools_if_env_changed(*, force: bool = False):
-    global _last_env_mtime, groq_pool, ollama_pool, mistral_pool
-    global groq_client, ollama_client, mistral_client
+    global _last_env_mtime, _provider_state
     try:
         mtime = ENV_PATH.stat().st_mtime
     except OSError:
@@ -198,14 +207,11 @@ async def _reload_pools_if_env_changed(*, force: bool = False):
             if mtime <= _last_env_mtime:
                 return
             load_dotenv(ENV_PATH, override=True)
-            groq_pool = CredentialPool("groq", _parse_keys("GROQ_API_KEYS"), _resolve_strategy("GROQ"))
-            ollama_pool = CredentialPool("ollama", _parse_keys("OLLAMA_API_KEYS"), _resolve_strategy("OLLAMA"))
-            mistral_pool = CredentialPool("mistral", _parse_keys("MISTRAL_API_KEYS"), _resolve_strategy("MISTRAL"))
-            groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
-            ollama_client = ProviderClient(ollama_pool, "https://ollama.com", "/api/chat")
-            mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
+            new_state = _build_state()
+            _provider_state = new_state
             _last_env_mtime = mtime
-            print(f" Epoxy: reloaded pools — Groq: {groq_pool.total_keys}, Ollama: {ollama_pool.total_keys}, Mistral: {mistral_pool.total_keys}")
+            pools = _provider_state["pools"]
+            print(f" Epoxy: reloaded pools — Groq: {pools['groq'].total_keys}, Ollama: {pools['ollama'].total_keys}, Mistral: {pools['mistral'].total_keys}")
         except Exception as e:
             print(f" Epoxy: error reloading .env: {e}")
 
@@ -293,8 +299,8 @@ async def ollama_stream_generator(client: httpx.AsyncClient, response: httpx.Res
                     ],
                 }
                 yield f"data: {json.dumps(openai_chunk)}\n\n"
-            except Exception as e:
-                print(f"Error parsing Ollama stream line: {e}")
+            except Exception:
+                logger.exception("Error parsing Ollama stream line")
         yield "data: [DONE]\n\n"
     finally:
         await response.aclose()
@@ -304,8 +310,10 @@ async def ollama_stream_generator(client: httpx.AsyncClient, response: httpx.Res
 async def sse_passthrough_generator(client: httpx.AsyncClient, response: httpx.Response):
     try:
         async for line in response.aiter_lines():
-            if line:
-                yield f"{line}\n"
+            if not line:
+                continue
+            sep = "\n\n"
+            yield f"{line}{sep}"
     finally:
         await response.aclose()
         await client.aclose()
@@ -461,49 +469,57 @@ class ProviderClient:
         )
 
 
-groq_client = ProviderClient(groq_pool, "https://api.groq.com", "/openai/v1/chat/completions")
-ollama_client = ProviderClient(ollama_pool, "https://ollama.com", "/api/chat")
-mistral_client = ProviderClient(mistral_pool, "https://api.mistral.ai", "/v1/chat/completions")
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    global _provider_state
+    _provider_state = _build_state()
+    pools = _provider_state["pools"]
+    print(
+        f" Epoxy starting — "
+        f"Groq: {pools['groq'].total_keys} keys ({pools['groq'].strategy.value}), "
+        f"Ollama: {pools['ollama'].total_keys} keys ({pools['ollama'].strategy.value}), "
+        f"Mistral: {pools['mistral'].total_keys} keys ({pools['mistral'].strategy.value})"
+    )
     print(f" Epoxy: watching {ENV_PATH} for changes")
     yield
 
 
-app = FastAPI(title="Epoxy", version="1.2.1", lifespan=lifespan)
+app = FastAPI(title="Epoxy", version="1.2.17", lifespan=lifespan)
 
 
 @app.post("/reload")
 async def reload_pools():
     await _reload_pools_if_env_changed(force=True)
+    pools = _provider_state["pools"]
     return JSONResponse({
         "status": "ok",
-        "providers": {p: globals()[f"{p}_pool"].get_status() for p in PROVIDER_NAMES},
+        "providers": {p: pools[p].get_status() for p in PROVIDER_NAMES},
     })
 
 
 @app.get("/health")
 async def health():
+    pools = _provider_state["pools"]
     return JSONResponse({
         "status": "ok",
-        "providers": {p: globals()[f"{p}_pool"].get_status() for p in PROVIDER_NAMES},
+        "providers": {p: pools[p].get_status() for p in PROVIDER_NAMES},
     })
 
 
 @app.get("/v1/models")
 async def list_models():
+    pools = _provider_state["pools"]
     models = []
-    if groq_pool.total_keys > 0:
+    if pools["groq"].total_keys > 0:
         models.append({"id": "groq-llama-3.1-8b-instant", "object": "model", "created": int(time.time()), "owned_by": "groq"})
         models.append({"id": "groq-llama-3.3-70b-versatile", "object": "model", "created": int(time.time()), "owned_by": "groq"})
         models.append({"id": "groq-compound-beta", "object": "model", "created": int(time.time()), "owned_by": "groq"})
-    if ollama_pool.total_keys > 0:
+    if pools["ollama"].total_keys > 0:
         models.append({"id": "ollama-nemotron-3-super:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
         models.append({"id": "ollama-gpt-oss:20b-cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
         models.append({"id": "ollama-minimax-m3:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
         models.append({"id": "ollama-glm-4.7:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
-    if mistral_pool.total_keys > 0:
+    if pools["mistral"].total_keys > 0:
         models.append({"id": "mistral-large-latest", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
         models.append({"id": "mistral-small-latest", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
         models.append({"id": "open-mistral-nemo", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
@@ -524,19 +540,20 @@ async def capabilities():
 async def handle_chat(request: Request):
     await _reload_pools_if_env_changed()
     body = await request.json()
+    pools = _provider_state["pools"]
+    clients = _provider_state["clients"]
 
     model_name = body.get("model", "")
     if not model_name:
-        available = [p for p in PROVIDER_NAMES if globals()[f"{p}_pool"].total_keys > 0]
+        available = [p for p in PROVIDER_NAMES if pools[p].total_keys > 0]
         model_name = f"{available[0]}-default" if available else "groq-llama-3.1-8b-instant"
         body["model"] = model_name
 
     provider = get_provider(model_name)
     stream = body.get("stream", False)
 
-    # fallback chain: if the routed provider has no keys, try others
-    if globals()[f"{provider}_pool"].total_keys == 0:
-        fallback = [p for p in PROVIDER_NAMES if globals()[f"{p}_pool"].total_keys > 0]
+    if pools[provider].total_keys == 0:
+        fallback = [p for p in PROVIDER_NAMES if pools[p].total_keys > 0]
         if not fallback:
             raise HTTPException(status_code=503, detail="No API keys configured for any provider.")
         provider = fallback[0]
@@ -545,12 +562,12 @@ async def handle_chat(request: Request):
         model = body.get("model", "")
         if model.startswith("groq-"):
             body["model"] = model[len("groq-"):]
-        return await groq_client.send_request(body, {"Content-Type": "application/json"}, stream)
+        return await clients["groq"].send_request(body, {"Content-Type": "application/json"}, stream)
     elif provider == "mistral":
-        return await mistral_client.send_request(body, {"Content-Type": "application/json"}, stream)
+        return await clients["mistral"].send_request(body, {"Content-Type": "application/json"}, stream)
     else:
         ollama_body = transform_to_ollama_request(body)
-        return await ollama_client.send_request(ollama_body, {"Content-Type": "application/json"}, stream, is_ollama=True)
+        return await clients["ollama"].send_request(ollama_body, {"Content-Type": "application/json"}, stream, is_ollama=True)
 
 
 if __name__ == "__main__":
