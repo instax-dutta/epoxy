@@ -497,8 +497,6 @@ async def list_models():
     if groq_pool.total_keys > 0:
         models.append({"id": "groq-llama-3.1-8b-instant", "object": "model", "created": int(time.time()), "owned_by": "groq"})
         models.append({"id": "groq-llama-3.3-70b-versatile", "object": "model", "created": int(time.time()), "owned_by": "groq"})
-        models.append({"id": "groq-gemma2-9b-it", "object": "model", "created": int(time.time()), "owned_by": "groq"})
-        models.append({"id": "groq-deepseek-r1-distill-llama-70b", "object": "model", "created": int(time.time()), "owned_by": "groq"})
         models.append({"id": "groq-compound-beta", "object": "model", "created": int(time.time()), "owned_by": "groq"})
     if ollama_pool.total_keys > 0:
         models.append({"id": "ollama-nemotron-3-super:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
