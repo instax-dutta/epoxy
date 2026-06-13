@@ -386,11 +386,13 @@ class ProviderClient:
             if response.status_code in (301, 302, 307, 308):
                 location = response.headers.get("Location")
                 if location:
+                    print(f" {self.pool.name} redirecting to {location}")
                     await response.aclose()
                     response = await _do_post(location)
 
             if response.status_code in (403, 429, 402, 401):
                 status = response.status_code
+                print(f" {self.pool.name} key error: HTTP {status} from {response.url}")
                 await response.aclose()
                 await client.aclose()
                 await self.pool.mark_error(key, status)
