@@ -1,16 +1,14 @@
 #!/bin/sh
 set -e
 
-# Epoxy — API key configuration
-#
-# Keys are stored in /home/container/.env.
-# Edit through Pterodactyl's File Manager.
-# Reloads automatically on change (no restart needed).
-#
-# Supported providers:
-#   GROQ_API_KEYS   — Groq (free-tier)
-#   OLLAMA_API_KEYS — Ollama Cloud
-#   MISTRAL_API_KEYS — Mistral API
+# Copy fresh app files from image — overwrites stale volume copies
+cp /app/server.py "$HOME/server.py"
+cp /app/entrypoint.sh "$HOME/entrypoint.sh"
+chmod +x "$HOME/entrypoint.sh"
+cp /app/.env.example "$HOME/.env.example"
+
+# Ensure deps are installed (fast no-op if already present)
+pip install --no-cache-dir -r /app/requirements.txt > /dev/null 2>&1 || true
 
 if [ ! -f "$HOME/.env" ]; then
     cp "$HOME/.env.example" "$HOME/.env"

@@ -9,12 +9,12 @@ FROM python:3.14-alpine
 RUN adduser -D -h /home/container container
 
 COPY --from=builder /usr/local /usr/local
-COPY server.py /home/container/
-COPY .env.example /home/container/.env.example
-COPY entrypoint.sh /home/container/
+COPY server.py /app/server.py
+COPY .env.example /app/.env.example
+COPY requirements.txt /app/requirements.txt
+COPY entrypoint.sh /app/entrypoint.sh
 
-RUN chown -R container:container /home/container && \
-    chmod +x /home/container/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 ENV PYTHONUNBUFFERED=1 \
     HOME=/home/container
@@ -22,8 +22,6 @@ ENV PYTHONUNBUFFERED=1 \
 USER container
 WORKDIR /home/container
 
-# Pterodactyl maps SERVER_PORT to the container;
-# entrypoint.sh resolves SERVER_PORT → PORT → 8080
 EXPOSE 8080
 
-ENTRYPOINT ["/home/container/entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]
