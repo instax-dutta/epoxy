@@ -1,5 +1,5 @@
 {
-  "_comment": "Epoxy — Hermes Agent Free-Tier Proxy. Pools Groq, Ollama Cloud, and Mistral API keys behind a single OpenAI-compatible endpoint with automatic rotation and cooldown handling.",
+  "_comment": "Epoxy \u2014 Hermes Agent Free-Tier Proxy. Pools Groq, Ollama Cloud, and Mistral API keys behind a single OpenAI-compatible endpoint with automatic rotation and cooldown handling.",
   "meta": {
     "version": "PTDL_v2",
     "update_url": null
@@ -7,7 +7,7 @@
   "exported_at": "2026-06-12T00:00:00+00:00",
   "name": "Epoxy",
   "author": "epoxy@users.noreply.github.com",
-  "description": "Epoxy pools free-tier API keys from Groq, Ollama Cloud, and Mistral behind a single OpenAI-compatible endpoint with automatic key rotation and cooldown handling.\n\nAPI keys are stored in /home/container/.env. After creating the server, go to the File Manager, open .env, and paste your comma-separated API keys for any of the three providers.\n\nPoint Hermes Agent at this proxy:\n  custom_providers:\n    free-pool:\n      base_url: http://<server-ip>:{{SERVER_PORT}}\n\nModels:\n  groq-llama-3.1-8b-instant    (or any Groq model)\n  ollama-deepseek-v4-flash:cloud  (or any Ollama model)\n  ollama-minimax-m3:cloud      (MiniMax via Ollama Cloud)\n  mistral-large-latest         (or any Mistral model)\n\nPool strategies (GROQ_POOL_STRATEGY, OLLAMA_POOL_STRATEGY, MISTRAL_POOL_STRATEGY):\n  fill_first / round_robin / least_used / random\n\nCooldowns: 429→1h, 402→24h, 401→immediate rotation",
+  "description": "Epoxy pools free-tier API keys from Groq, Ollama Cloud, and Mistral behind a single OpenAI-compatible endpoint with automatic key rotation and cooldown handling.\n\nAPI keys are stored in /home/container/.env. After creating the server, go to the File Manager, open .env, and paste your comma-separated API keys for any of the three providers.\n\nPoint Hermes Agent at this proxy:\n  custom_providers:\n    free-pool:\n      base_url: http://<server-ip>:{{SERVER_PORT}}\n\nModels:\n  groq-llama-3.1-8b-instant    (or any Groq model)\n  ollama-deepseek-v4-flash:cloud  (or any Ollama model)\n  ollama-minimax-m3:cloud      (MiniMax via Ollama Cloud)\n  mistral-large-latest         (or any Mistral model)\n\nPool strategies (GROQ_POOL_STRATEGY, OLLAMA_POOL_STRATEGY, MISTRAL_POOL_STRATEGY):\n  fill_first / round_robin / least_used / random\n\nCooldowns: 429\u21921h, 402\u219224h, 401\u2192immediate rotation",
   "features": null,
   "docker_images": {
     "Epoxy": "ghcr.io/instax-dutta/epoxy:latest"
@@ -22,7 +22,7 @@
   },
   "scripts": {
     "installation": {
-      "script": "set -x\nset -e\n\napk add --no-cache curl\n\n# fetch the latest release zip from GitHub\nREPO=\"instax-dutta/epoxy\"\nVERSION=$(curl -sL \"https://api.github.com/repos/$REPO/releases/latest\" | grep -o '\"tag_name\": \"[^\"]*\"' | cut -d'\"' -f4 || echo \"main\")\n\nif [ \"$VERSION\" = \"main\" ]; then\n  URL=\"https://github.com/$REPO/archive/refs/heads/main.zip\"\nelse\n  URL=\"https://github.com/$REPO/releases/download/$VERSION/epoxy-${VERSION#v}.zip\"\nfi\n\ncurl -sL \"$URL\" -o /tmp/epoxy.zip\nunzip -o /tmp/epoxy.zip -d /tmp/epoxy-extract/\n\n# find and copy the files (structure differs between tag zip and branch zip)\nif [ -d /tmp/epoxy-extract/epoxy-main ]; then\n  SRC=/tmp/epoxy-extract/epoxy-main\nelif [ -d /tmp/epoxy-extract/epoxy-${VERSION#v} ]; then\n  SRC=/tmp/epoxy-extract/epoxy-${VERSION#v}\nelse\n  # fallback: take whatever single directory is in there\n  SRC=$(find /tmp/epoxy-extract -mindepth 1 -maxdepth 1 -type d | head -1)\nfi\n\ncp \"$SRC/server.py\" /mnt/server/\ncp \"$SRC/entrypoint.sh\" /mnt/server/\ncp \"$SRC/.env.example\" /mnt/server/\ncp \"$SRC/requirements.txt\" /mnt/server/\nchmod +x /mnt/server/entrypoint.sh\n\necho \"Epoxy v${VERSION#v} installed.\"",
+      "script": "set -x\nset -e\n\napk add --no-cache curl\n\n# fetch source zip from main branch (no release workflow anymore)\nURL=\"https://github.com/instax-dutta/epoxy/archive/refs/heads/main.zip\"\n\ncurl -sL \"$URL\" -o /tmp/epoxy.zip\nunzip -o /tmp/epoxy.zip -d /tmp/epoxy-extract/\n\n# find and copy the files\nif [ -d /tmp/epoxy-extract/epoxy-main ]; then\n  SRC=/tmp/epoxy-extract/epoxy-main\nelse\n  SRC=$(find /tmp/epoxy-extract -mindepth 1 -maxdepth 1 -type d | head -1)\nfi\n\ncp \"$SRC/server.py\" /mnt/server/\ncp \"$SRC/entrypoint.sh\" /mnt/server/\ncp \"$SRC/.env.example\" /mnt/server/\ncp \"$SRC/requirements.txt\" /mnt/server/\nchmod +x /mnt/server/entrypoint.sh\n\necho \"Epoxy installed from main branch.\"\n",
       "container": "alpine:latest",
       "entrypoint": "ash"
     }
