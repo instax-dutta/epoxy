@@ -544,6 +544,9 @@ async def handle_chat(request: Request):
         provider = fallback[0]
 
     if provider == "groq":
+        model = body.get("model", "")
+        if model.startswith("groq-"):
+            body["model"] = model[len("groq-"):]
         return await groq_client.send_request(body, {"Content-Type": "application/json"}, stream)
     elif provider == "mistral":
         return await mistral_client.send_request(body, {"Content-Type": "application/json"}, stream)
