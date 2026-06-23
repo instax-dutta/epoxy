@@ -1,5 +1,5 @@
 {
-  "_comment": "Epoxy \u2014 Hermes Agent Free-Tier Proxy. Pools Groq, Ollama Cloud, and Mistral API keys behind a single OpenAI-compatible endpoint with automatic rotation and cooldown handling.",
+  "_comment": "Epoxy \u2014 Universal free-tier LLM key rotation proxy. Pools Groq, Ollama Cloud, and Mistral API keys behind a single OpenAI-compatible endpoint. Drop-in for Open WebUI, AnythingLLM, LM Studio, LibreChat, bots, and any OpenAI SDK client.",
   "meta": {
     "version": "PTDL_v2",
     "update_url": null
@@ -7,7 +7,7 @@
   "exported_at": "2026-06-12T00:00:00+00:00",
   "name": "Epoxy",
   "author": "epoxy@users.noreply.github.com",
-  "description": "Epoxy pools free-tier API keys from Groq, Ollama Cloud, and Mistral behind a single OpenAI-compatible endpoint with automatic key rotation and cooldown handling.\n\nAPI keys are stored in /home/container/.env. After creating the server, go to the File Manager, open .env, and paste your comma-separated API keys for any of the three providers.\n\nPoint Hermes Agent at this proxy:\n  custom_providers:\n    free-pool:\n      base_url: http://<server-ip>:{{SERVER_PORT}}\n\nModels:\n  groq-llama-3.1-8b-instant    (or any Groq model)\n  ollama-deepseek-v4-flash:cloud  (or any Ollama model)\n  ollama-minimax-m3:cloud      (MiniMax via Ollama Cloud)\n  mistral-large-latest         (or any Mistral model)\n\nPool strategies (GROQ_POOL_STRATEGY, OLLAMA_POOL_STRATEGY, MISTRAL_POOL_STRATEGY):\n  fill_first / round_robin / least_used / random\n\nCooldowns: 429\u21921h, 402\u219224h, 401\u2192immediate rotation",
+  "description": "Epoxy pools free-tier API keys from Groq, Ollama Cloud, and Mistral behind a single OpenAI-compatible endpoint with automatic key rotation and cooldown handling.\n\nWorks as a drop-in base URL for any OpenAI-compatible client: Open WebUI, AnythingLLM, LM Studio, LibreChat, Discord bots, Python/Node SDKs, and more.\n\nAPI keys are stored in /home/container/.env. After creating the server, go to the File Manager, open .env, and paste your comma-separated API keys for any of the three providers.\n\nPoint any OpenAI-compatible client at this proxy:\n  base_url: http://<server-ip>:{{SERVER_PORT}}/v1\n  api_key: (any string \u2014 auth is not enforced)\n\nModels:\n  groq-llama-3.1-8b-instant\n  ollama-deepseek-v4-flash:cloud\n  ollama-minimax-m3:cloud\n  mistral-large-latest\n\nPool strategies (GROQ_POOL_STRATEGY, OLLAMA_POOL_STRATEGY, MISTRAL_POOL_STRATEGY):\n  fill_first / round_robin / least_used / random\n\nCooldowns: 429\u21921h, 402\u219224h, 401\u2192immediate removal",
   "features": null,
   "docker_images": {
     "Epoxy": "ghcr.io/instax-dutta/epoxy:latest"

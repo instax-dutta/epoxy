@@ -1,6 +1,6 @@
 <p align="center">
   <h1 align="center">Epoxy</h1>
-  <p align="center"><em>Free-tier LLM proxy for Hermes Agent</em></p>
+  <p align="center"><em>Universal Free-Tier LLM Key Rotation Proxy</em></p>
   <p align="center">
     Pools multiple Groq, Ollama Cloud &amp; Mistral API keys behind a single OpenAI-compatible endpoint.<br>
     Auto key rotation · 429/402/401 cooldowns · Hot-reload · Pterodactyl &amp; Docker
@@ -23,18 +23,6 @@
   <img src="https://img.shields.io/github/v/release/instax-dutta/epoxy?logo=github" alt="Release">
   <img src="https://img.shields.io/badge/architecture-amd64%20%7C%20arm64-lightgrey" alt="Architecture">
 </p>
-
----
-
-## Features
-
-- **Multi-provider pooling** — Combine keys from Groq, Ollama Cloud, and Mistral into one endpoint.
-- **Automatic key rotation** — Round-robin, fill-first, least-used, or random strategies per provider.
-- **Intelligent cooldowns** — Rate-limited (429 → 1h), exhausted (402 → 24h), or auth failures (401 → immediate removal).
-- **Cross-provider fallback** — If the routed provider has no healthy keys, Epoxy falls through to any configured provider.
-- **Model routing** — Keyword-based model → provider dispatch. No config needed; just pick a model name.
-- **Hot-reload** — Edit `.env` and the next request picks up changes. No restart required.
-- **Pterodactyl native** — Import the egg, set keys via File Manager, done.
 
 ---
 
@@ -64,22 +52,71 @@ curl http://localhost:8080/v1/chat/completions \
 
 ---
 
-## Hermes Agent Setup
+## Integration Examples
 
-```yaml
-# config.yml
-custom_providers:
-  free-pool:
-    base_url: http://<your-server-ip>:8080
+Epoxy exposes a standard OpenAI-compatible API. Point any client at it by changing the base URL.
+
+### Python (openai SDK)
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://<host>:8080/v1",
+    api_key="any-string",  # auth is not enforced
+)
+response = client.chat.completions.create(
+    model="groq-llama-3.1-8b-instant",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
 ```
 
-Then use any supported model by name:
+### Node.js (openai SDK)
 
+```javascript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'http://<host>:8080/v1',
+  apiKey: 'any-string',
+});
+const response = await client.chat.completions.create({
+  model: 'groq-llama-3.1-8b-instant',
+  messages: [{ role: 'user', content: 'Hello!' }],
+});
 ```
-/model groq-llama-3.1-8b-instant
-/model ollama-deepseek-v4-flash:cloud
-/model mistral-large-latest
-```
+
+### Open WebUI
+
+In **Settings → Connections**, set:
+- **OpenAI API URL**: `http://<host>:8080/v1`
+- **API Key**: any string (e.g., `epoxy`)
+
+### AnythingLLM
+
+In **Settings → LLM Preference → OpenAI**, set:
+- **Base URL**: `http://<host>:8080/v1`
+- **API Key**: any string
+
+### LM Studio
+
+In **Server → OpenAI Compatible Server**, set:
+- **Base URL**: `http://<host>:8080/v1`
+- **API Key**: any string
+
+*Any client that accepts a custom OpenAI base URL works.*
+
+---
+
+## Features
+
+- **Multi-provider pooling** — Combine keys from Groq, Ollama Cloud, and Mistral into one endpoint.
+- **Automatic key rotation** — Round-robin, fill-first, least-used, or random strategies per provider.
+- **Intelligent cooldowns** — Rate-limited (429 → 1h), exhausted (402 → 24h), or auth failures (401 → immediate removal).
+- **Cross-provider fallback** — If the routed provider has no healthy keys, Epoxy falls through to any configured provider.
+- **Model routing** — Keyword-based model → provider dispatch. No config needed; just pick a model name.
+- **Hot-reload** — Edit `.env` and the next request picks up changes. No restart required.
+- **Pterodactyl native** — Import the egg, set keys via File Manager, done.
 
 ---
 
@@ -237,28 +274,28 @@ Force-reload API keys from `.env` without restarting.
 ## Architecture
 
 ```
-┌─────────────┐     ┌──────────────────────────────────────────┐
-│             │     │               Epoxy                      │
-│  Hermes     │     │  ┌──────────┐  ┌──────────┐  ┌────────┐  │
-│  Agent      │─────│  │   Groq   │  │  Ollama  │  │ Mistral│  │
-│  / Client   │     │  │   Pool   │  │   Pool   │  │  Pool  │  │
-│             │     │  ├──────────┤  ├──────────┤  ├────────┤  │
-│             │     │  │ round    │  │ round    │  │ round  │  │
-│             │     │  │ _robin   │  │ _robin   │  │ _robin │  │
-│             │     │  │          │  │          │  │        │  │
-│             │     │  │ Key 1 ✓  │  │ Key 1 ✓  │  │ Key 1 ✓│  │
-│             │     │  │ Key 2 ✗  │  │ Key 2 ✓  │  │        │  │
-│             │     │  │ Key 3 ✓  │  │          │  │        │  │
-│             │     │  └──────────┘  └──────────┘  └────────┘  │
-│             │     │         \            |          /         │
-│             │     │          \           |         /          │
-│             │     │     ┌──────────────────────────┐         │
-│             │     │     │   Model Router:           │         │
-│             │     │     │   keyword → provider      │         │
-│             │     │     └──────────────────────────┘         │
-│             │     │              ↕ HTTP POST                  │
-│             │     │      /v1/chat/completions                 │
-└─────────────┘     └──────────────────────────────────────────┘
+┌──────────────────────┐     ┌──────────────────────────────────────────┐
+│                      │     │               Epoxy                      │
+│  Any OpenAI-         │     │  ┌──────────┐  ┌──────────┐  ┌────────┐  │
+│  compatible          │─────│  │   Groq   │  │  Ollama  │  │ Mistral│  │
+│  Client              │     │  │   Pool   │  │   Pool   │  │  Pool  │  │
+│                      │     │  ├──────────┤  ├──────────┤  ├────────┤  │
+│                      │     │  │ round    │  │ round    │  │ round  │  │
+│                      │     │  │ _robin   │  │ _robin   │  │ _robin │  │
+│                      │     │  │          │  │          │  │        │  │
+│                      │     │  │ Key 1 ✓  │  │ Key 1 ✓  │  │ Key 1 ✓│  │
+│                      │     │  │ Key 2 ✗  │  │ Key 2 ✓  │  │        │  │
+│                      │     │  │ Key 3 ✓  │  │          │  │        │  │
+│                      │     │  └──────────┘  └──────────┘  └────────┘  │
+│                      │     │         \            |          /         │
+│                      │     │          \           |         /          │
+│                      │     │     ┌──────────────────────────┐         │
+│                      │     │     │   Model Router:           │         │
+│                      │     │     │   keyword → provider      │         │
+│                      │     │     └──────────────────────────┘         │
+│                      │     │              ↕ HTTP POST                  │
+│                      │     │      /v1/chat/completions                 │
+└──────────────────────┘     └──────────────────────────────────────────┘
 ```
 
 ---

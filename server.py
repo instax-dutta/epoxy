@@ -475,7 +475,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _provider_state = _build_state()
     pools = _provider_state["pools"]
     print(
-        f" Epoxy starting — "
+        f" Epoxy (universal LLM proxy) starting — "
         f"Groq: {pools['groq'].total_keys} keys ({pools['groq'].strategy.value}), "
         f"Ollama: {pools['ollama'].total_keys} keys ({pools['ollama'].strategy.value}), "
         f"Mistral: {pools['mistral'].total_keys} keys ({pools['mistral'].strategy.value})"
