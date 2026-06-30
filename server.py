@@ -191,21 +191,21 @@ def _build_state():
 _provider_state: dict = {}
 
 VALIDATION_ENDPOINTS = {
-    "groq": ("https://api.groq.com", "/openai/v1/models"),
-    "ollama": ("https://ollama.com", "/api/tags"),
-    "mistral": ("https://api.mistral.ai", "/v1/models"),
+    "groq": ("https://api.groq.com", "/openai/v1/models", "GET", None),
+    "ollama": ("https://ollama.com", "/api/chat", "POST", {"model": "nemotron-3-super:cloud", "messages": [{"role": "user", "content": "hi"}], "options": {"num_predict": 1}, "stream": False}),
+    "mistral": ("https://api.mistral.ai", "/v1/models", "GET", None),
 }
 
 
 async def _validate_key(provider: str, key: PoolKey) -> KeyStatus:
-    base_url, test_path = VALIDATION_ENDPOINTS[provider]
+    base_url, api_path, method, body = VALIDATION_ENDPOINTS[provider]
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{base_url}{test_path}",
-                headers={"Authorization": f"Bearer {key.value}"},
-                timeout=10.0,
-            )
+            headers = {"Authorization": f"Bearer {key.value}", "Content-Type": "application/json"}
+            if method == "GET":
+                resp = await client.get(f"{base_url}{api_path}", headers=headers, timeout=10.0)
+            else:
+                resp = await client.post(f"{base_url}{api_path}", headers=headers, json=body, timeout=10.0)
             if resp.status_code == 401:
                 return KeyStatus.AUTH_ERROR
             if resp.status_code in (402, 403):
