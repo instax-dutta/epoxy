@@ -190,6 +190,48 @@ def _build_state():
 
 _provider_state: dict = {}
 
+VALIDATION_ENDPOINTS = {
+    "groq": ("https://api.groq.com", "/openai/v1/models"),
+    "ollama": ("https://ollama.com", "/api/tags"),
+    "mistral": ("https://api.mistral.ai", "/v1/models"),
+}
+
+
+async def _validate_key(provider: str, key: PoolKey) -> KeyStatus:
+    base_url, test_path = VALIDATION_ENDPOINTS[provider]
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{base_url}{test_path}",
+                headers={"Authorization": f"Bearer {key.value}"},
+                timeout=10.0,
+            )
+            if resp.status_code == 401:
+                return KeyStatus.AUTH_ERROR
+            if resp.status_code in (402, 403):
+                return KeyStatus.EXHAUSTED
+            return KeyStatus.OK
+    except Exception:
+        return KeyStatus.OK
+
+
+async def validate_pools(state: dict):
+    pools = state["pools"]
+    for name in ("groq", "ollama", "mistral"):
+        pool = pools[name]
+        if pool.total_keys == 0:
+            continue
+        for key in pool._keys:
+            status = await _validate_key(name, key)
+            if status == KeyStatus.AUTH_ERROR:
+                key.status = KeyStatus.AUTH_ERROR
+                key.cooldown_until = 0
+                print(f" {name}: key ...{key.value[-6:]} auth error — removed from rotation")
+            elif status == KeyStatus.EXHAUSTED:
+                key.status = KeyStatus.EXHAUSTED
+                key.cooldown_until = time.monotonic() + COOLDOWN_SECONDS[KeyStatus.EXHAUSTED]
+                print(f" {name}: key ...{key.value[-6:]} exhausted — cooling down 24h")
+
 
 async def _reload_pools_if_env_changed(*, force: bool = False):
     global _last_env_mtime, _provider_state
@@ -208,10 +250,11 @@ async def _reload_pools_if_env_changed(*, force: bool = False):
                 return
             load_dotenv(ENV_PATH, override=True)
             new_state = _build_state()
+            await validate_pools(new_state)
             _provider_state = new_state
             _last_env_mtime = mtime
             pools = _provider_state["pools"]
-            print(f" Epoxy: reloaded pools — Groq: {pools['groq'].total_keys}, Ollama: {pools['ollama'].total_keys}, Mistral: {pools['mistral'].total_keys}")
+            print(f" Epoxy: reloaded pools — Groq: {pools['groq'].healthy_keys}/{pools['groq'].total_keys}, Ollama: {pools['ollama'].healthy_keys}/{pools['ollama'].total_keys}, Mistral: {pools['mistral'].healthy_keys}/{pools['mistral'].total_keys}")
         except Exception as e:
             print(f" Epoxy: error reloading .env: {e}")
 
@@ -474,12 +517,14 @@ class ProviderClient:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global _provider_state
     _provider_state = _build_state()
+    print(" Epoxy: validating API keys...")
+    await validate_pools(_provider_state)
     pools = _provider_state["pools"]
     print(
         f" Epoxy (universal LLM proxy) starting — "
-        f"Groq: {pools['groq'].total_keys} keys ({pools['groq'].strategy.value}), "
-        f"Ollama: {pools['ollama'].total_keys} keys ({pools['ollama'].strategy.value}), "
-        f"Mistral: {pools['mistral'].total_keys} keys ({pools['mistral'].strategy.value})"
+        f"Groq: {pools['groq'].healthy_keys}/{pools['groq'].total_keys} keys ({pools['groq'].strategy.value}), "
+        f"Ollama: {pools['ollama'].healthy_keys}/{pools['ollama'].total_keys} keys ({pools['ollama'].strategy.value}), "
+        f"Mistral: {pools['mistral'].healthy_keys}/{pools['mistral'].total_keys} keys ({pools['mistral'].strategy.value})"
     )
     print(f" Epoxy: watching {ENV_PATH} for changes")
     yield
