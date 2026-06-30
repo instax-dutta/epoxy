@@ -108,6 +108,86 @@ In **Server → OpenAI Compatible Server**, set:
 
 ---
 
+### OpenCode
+
+Configure a custom provider in `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "provider": {
+    "epoxy": {
+      "name": "Epoxy",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://<host>:8080/v1"
+      },
+      "models": {
+        "groq-llama-3.1-8b-instant": { "name": "Groq Llama 3.1 8B" },
+        "groq-llama-3.3-70b-versatile": { "name": "Groq Llama 3.3 70B" },
+        "groq-deepseek-r1-distill-llama-70b": { "name": "Groq DeepSeek R1 70B" },
+        "ollama-deepseek-v4-flash:cloud": { "name": "Ollama DeepSeek V4 Flash" },
+        "ollama-qwen3.5:cloud": { "name": "Ollama Qwen 3.5" },
+        "ollama-gpt-oss:120b-cloud": { "name": "Ollama GPT-OSS 120B" }
+      }
+    }
+  }
+}
+```
+
+Then add your API key via `/connect` (any string works) and select an Epoxy model from the model picker.
+
+### Kilo Code
+
+In **Kilo Code Settings → Providers → Add Provider**, select **OpenAI Compatible** and fill in:
+
+- **Base URL**: `http://<host>:8080/v1`
+- **API Key**: any string
+
+The model list will auto-fetch. Select any Epoxy model (e.g., `groq-llama-3.1-8b-instant`) as your default.
+
+Or via `kilo.jsonc`:
+
+```json
+{
+  "provider": {
+    "epoxy": {
+      "name": "Epoxy",
+      "baseURL": "http://<host>:8080/v1",
+      "apiKey": "any-string",
+      "models": {
+        "groq-llama-3.1-8b-instant": { "name": "Groq Llama 3.1 8B", "id": "groq-llama-3.1-8b-instant" },
+        "groq-llama-3.3-70b-versatile": { "name": "Groq Llama 3.3 70B", "id": "groq-llama-3.3-70b-versatile" },
+        "ollama-deepseek-v4-flash:cloud": { "name": "Ollama DeepSeek V4 Flash", "id": "ollama-deepseek-v4-flash:cloud" }
+      }
+    }
+  }
+}
+```
+
+### Claude Code
+
+Claude Code uses the Anthropic Messages API, not OpenAI Chat Completions. To use Epoxy models, run a translation proxy alongside it:
+
+```bash
+# Example using claude-code-proxy
+git clone https://github.com/shirayner/cc-proxy
+# Configure OPENAI_API_KEY and OPENAI_BASE_URL=http://<host>:8080/v1 in .env
+python start_proxy.py
+
+# Then point Claude Code at the proxy
+ANTHROPIC_BASE_URL=http://localhost:8082 ANTHROPIC_API_KEY=any-value claude
+```
+
+### Cline
+
+In **Cline Settings → API Provider**, select **OpenAI Compatible**:
+
+- **Base URL**: `http://<host>:8080/v1`
+- **API Key**: any string
+- **Model ID**: pick any Epoxy model (e.g., `groq-llama-3.1-8b-instant`)
+
+---
+
 ## Features
 
 - **Multi-provider pooling** — Combine keys from Groq, Ollama Cloud, and Mistral into one endpoint.
