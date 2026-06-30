@@ -56,6 +56,8 @@ curl http://localhost:8080/v1/chat/completions \
 
 Epoxy exposes a standard OpenAI-compatible API. Point any client at it by changing the base URL.
 
+> **Note:** The port depends on your deployment — check the server logs for the actual URL (e.g., `http://0.0.0.0:9013`). Replace `8080` in the examples below with your port.
+
 ### Python (openai SDK)
 
 ```python
