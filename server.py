@@ -331,15 +331,16 @@ def get_provider(model_name: str) -> str:
             return "mistral"
 
     ollama_keywords = [
-        "gpt-oss", "kimi-", "minimax-", "glm-", "qwen3", "cogito-", "nemotron-",
-        "deepseek-v4", "deepseek-v3",
+        "gpt-oss", "kimi-", "minimax-", "glm-", "qwen3", "qwen3.5",
+        "cogito-", "nemotron-", "deepseek-v4", "deepseek-v3", "gemma4",
     ]
     for kw in ollama_keywords:
         if kw in model_name_lower:
             return "ollama"
 
     groq_keywords = [
-        "llama-3", "llama3", "mixtral", "gemma", "whisper", "deepseek-r1-distill",
+        "llama-3", "llama3", "mixtral", "gemma", "gemma2", "whisper",
+        "deepseek-r1-distill", "compound",
     ]
     for kw in groq_keywords:
         if kw in model_name_lower:
@@ -511,14 +512,31 @@ async def list_models():
     pools = _provider_state["pools"]
     models = []
     if pools["groq"].total_keys > 0:
-        models.append({"id": "groq-llama-3.1-8b-instant", "object": "model", "created": int(time.time()), "owned_by": "groq"})
         models.append({"id": "groq-llama-3.3-70b-versatile", "object": "model", "created": int(time.time()), "owned_by": "groq"})
-        models.append({"id": "groq-compound-beta", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-llama-3.1-8b-instant", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-mixtral-8x7b-32768", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-gemma2-9b-it", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-deepseek-r1-distill-llama-70b", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-gemma-7b-it", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-llama-guard-3-8b", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-llama3-70b-8192", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-llama3-8b-8192", "object": "model", "created": int(time.time()), "owned_by": "groq"})
+        models.append({"id": "groq-whisper-large-v3", "object": "model", "created": int(time.time()), "owned_by": "groq"})
     if pools["ollama"].total_keys > 0:
+        models.append({"id": "ollama-glm-5.2:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
         models.append({"id": "ollama-nemotron-3-super:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
-        models.append({"id": "ollama-gpt-oss:20b-cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
         models.append({"id": "ollama-minimax-m3:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
-        models.append({"id": "ollama-glm-4.7:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-glm-5.1:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-kimi-k2.6:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-minimax-m2.7:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-deepseek-v4-flash:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-gpt-oss:120b-cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-gpt-oss:20b-cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-gemma4:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-nemotron-3-ultra:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-kimi-k2.7-code:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-qwen3.5:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
+        models.append({"id": "ollama-glm-5:cloud", "object": "model", "created": int(time.time()), "owned_by": "ollama"})
     if pools["mistral"].total_keys > 0:
         models.append({"id": "mistral-large-latest", "object": "model", "created": int(time.time()), "owned_by": "mistral"})
         models.append({"id": "mistral-small-latest", "object": "model", "created": int(time.time()), "owned_by": "mistral"})

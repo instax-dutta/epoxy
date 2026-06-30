@@ -122,23 +122,37 @@ In **Server → OpenAI Compatible Server**, set:
 
 ## Supported Models
 
-### Groq
-| Model |
-|---|
-| `groq-llama-3.1-8b-instant` |
-| `groq-llama-3.3-70b-versatile` |
-| `groq-gemma2-9b-it` |
-| `groq-deepseek-r1-distill-llama-70b` |
-| `groq-compound-beta` |
+### Groq — Fast & Reasoning
+| Category | Model |
+|---|---|
+| 🧠 Reasoning | `groq-llama-3.3-70b-versatile` |
+| ⚡ Fast | `groq-llama-3.1-8b-instant` |
+| ⚡ Fast | `groq-mixtral-8x7b-32768` |
+| ⚡ Fast | `groq-gemma2-9b-it` |
+| 🧠 Reasoning | `groq-deepseek-r1-distill-llama-70b` |
+| ⚡ Fast | `groq-gemma-7b-it` |
+| 🛡️ Guard | `groq-llama-guard-3-8b` |
+| 🧠 Reasoning | `groq-llama3-70b-8192` |
+| ⚡ Fast | `groq-llama3-8b-8192` |
+| 🎤 Audio | `groq-whisper-large-v3` |
 
-### Ollama Cloud
-| Model |
-|---|
-| `ollama-deepseek-v4-flash:cloud` |
-| `ollama-minimax-m3:cloud` |
-| `ollama-minimax-m2.7:cloud` |
-| `ollama-glm-5.1:cloud` |
-| `ollama-nemotron-3-super:cloud` |
+### Ollama Cloud — Reasoning, Code & Creative
+| Category | Model |
+|---|---|
+| 🧠 Reasoning | `ollama-glm-5.2:cloud` |
+| ⚡ Fast | `ollama-nemotron-3-super:cloud` |
+| ✨ Creative | `ollama-minimax-m3:cloud` |
+| 🧠 Reasoning | `ollama-glm-5.1:cloud` |
+| ✨ Creative | `ollama-kimi-k2.6:cloud` |
+| ✨ Creative | `ollama-minimax-m2.7:cloud` |
+| ⚡ Fast | `ollama-deepseek-v4-flash:cloud` |
+| 🧠 Reasoning | `ollama-gpt-oss:120b-cloud` |
+| ⚡ Fast | `ollama-gpt-oss:20b-cloud` |
+| ⚡ Fast | `ollama-gemma4:cloud` |
+| 🧠 Reasoning | `ollama-nemotron-3-ultra:cloud` |
+| 💻 Code | `ollama-kimi-k2.7-code:cloud` |
+| 💻 Code | `ollama-qwen3.5:cloud` |
+| 🧠 Reasoning | `ollama-glm-5:cloud` |
 
 ### Mistral
 | Model |
@@ -153,8 +167,8 @@ Any model name containing these keywords routes to the corresponding provider:
 
 | Provider | Keywords |
 |---|---|
-| **Groq** | `llama-3`, `llama3`, `mixtral`, `gemma`, `whisper`, `deepseek-r1-distill` |
-| **Ollama Cloud** | `deepseek-v3`, `deepseek-v4`, `qwen3`, `kimi-`, `minimax-`, `glm-`, `cogito-`, `nemotron-`, `gpt-oss`, `:`, `cloud` |
+| **Groq** | `llama-3`, `llama3`, `mixtral`, `gemma`, `gemma2`, `whisper`, `deepseek-r1-distill`, `compound` |
+| **Ollama Cloud** | `gpt-oss`, `kimi-`, `minimax-`, `glm-`, `qwen3`, `qwen3.5`, `cogito-`, `nemotron-`, `deepseek-v4`, `deepseek-v3`, `gemma4`, `:`, `cloud` |
 | **Mistral** | `mistral-`, `codestral-`, `open-mistral`, `open-mixtral`, `open-codestral` |
 
 If no keyword matches, the first provider with keys is used.
