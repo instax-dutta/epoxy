@@ -11,7 +11,7 @@ from pathlib import Path
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from dotenv import load_dotenv
 import httpx
 
@@ -541,6 +541,150 @@ async def reload_pools():
         "status": "ok",
         "providers": {p: pools[p].get_status() for p in PROVIDER_NAMES},
     })
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    pools = _provider_state["pools"]
+    groq_healthy = pools["groq"].healthy_keys
+    ollama_healthy = pools["ollama"].healthy_keys
+    mistral_healthy = pools["mistral"].healthy_keys
+    port = os.environ.get("SERVER_PORT", os.environ.get("PORT", "8080"))
+    base = f"http://localhost:{port}"
+
+    models_html = ""
+    if pools["groq"].total_keys > 0:
+        models_html += "<h3>Groq</h3><ul>"
+        for m in ["groq-llama-3.3-70b-versatile", "groq-llama-3.1-8b-instant", "groq-mixtral-8x7b-32768", "groq-gemma2-9b-it", "groq-deepseek-r1-distill-llama-70b", "groq-gemma-7b-it", "groq-llama-guard-3-8b", "groq-llama3-70b-8192", "groq-llama3-8b-8192", "groq-whisper-large-v3"]:
+            models_html += f"<li><code>{m}</code></li>"
+        models_html += "</ul>"
+    if pools["ollama"].total_keys > 0:
+        models_html += "<h3>Ollama Cloud</h3><ul>"
+        for m in ["ollama-glm-5.2:cloud", "ollama-nemotron-3-super:cloud", "ollama-minimax-m3:cloud", "ollama-glm-5.1:cloud", "ollama-kimi-k2.6:cloud", "ollama-minimax-m2.7:cloud", "ollama-deepseek-v4-flash:cloud", "ollama-gpt-oss:120b-cloud", "ollama-gpt-oss:20b-cloud", "ollama-gemma4:cloud", "ollama-nemotron-3-ultra:cloud", "ollama-kimi-k2.7-code:cloud", "ollama-qwen3.5:cloud", "ollama-glm-5:cloud"]:
+            models_html += f"<li><code>{m}</code></li>"
+        models_html += "</ul>"
+    if pools["mistral"].total_keys > 0:
+        models_html += "<h3>Mistral</h3><ul>"
+        for m in ["mistral-large-latest", "mistral-small-latest", "open-mistral-nemo"]:
+            models_html += f"<li><code>{m}</code></li>"
+        models_html += "</ul>"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Epoxy</title>
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0d1117; color:#c9d1d9; line-height:1.6; padding:2rem; }}
+  a {{ color:#58a6ff; }}
+  h1 {{ font-size:2rem; margin-bottom:.25rem; }}
+  h2 {{ font-size:1.3rem; margin:2rem 0 .75rem; border-bottom:1px solid #30363d; padding-bottom:.4rem; }}
+  h3 {{ font-size:1.1rem; margin:1rem 0 .5rem; color:#8b949e; }}
+  .badge {{ display:inline-block; padding:2px 10px; border-radius:12px; font-size:.8rem; font-weight:600; }}
+  .badge-green {{ background:#1b3d27; color:#3fb950; }}
+  .badge-red {{ background:#3d1b1b; color:#f85149; }}
+  .badge-yellow {{ background:#3d3a1b; color:#d29922; }}
+  code {{ background:#161b22; padding:2px 6px; border-radius:4px; font-size:.9em; }}
+  pre {{ background:#161b22; padding:1rem; border-radius:6px; overflow-x:auto; margin:.5rem 0; }}
+  pre code {{ background:transparent; padding:0; }}
+  ul {{ padding-left:1.5rem; margin:.5rem 0; }}
+  li {{ margin:.3rem 0; }}
+  .endpoints {{ display:flex; gap:.5rem; flex-wrap:wrap; margin:.5rem 0; }}
+  .endpoints a {{ background:#161b22; border:1px solid #30363d; padding:.4rem .8rem; border-radius:6px; text-decoration:none; font-size:.9rem; }}
+  .endpoints a:hover {{ border-color:#58a6ff; }}
+  .container {{ max-width:800px; margin:0 auto; }}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Epoxy</h1>
+  <p style="color:#8b949e;margin-bottom:.5rem;">Free-Tier LLM Key Rotation Proxy</p>
+
+  <div class="endpoints">
+    <a href="/health">/health</a>
+    <a href="/v1/models">/v1/models</a>
+    <a href="/v1/capabilities">/v1/capabilities</a>
+    <a href="/docs">/docs</a>
+    <a href="/reload">/reload</a>
+  </div>
+
+  <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin:1rem 0;">
+    <span class="badge {"badge-green" if groq_healthy > 0 else "badge-red"}">Groq {groq_healthy}/{pools["groq"].total_keys}</span>
+    <span class="badge {"badge-green" if ollama_healthy > 0 else "badge-red"}">Ollama {ollama_healthy}/{pools["ollama"].total_keys}</span>
+    <span class="badge {"badge-green" if mistral_healthy > 0 else "badge-red"}">Mistral {mistral_healthy}/{pools["mistral"].total_keys}</span>
+  </div>
+
+  <h2>Quickstart</h2>
+  <pre><code>curl {base}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{{
+  "model": "groq-llama-3.1-8b-instant",
+  "messages": [{{"role": "user", "content": "Hello!"}}],
+  "stream": true
+}}'</code></pre>
+
+  <h2>Available Models</h2>
+  {models_html}
+
+  <h2>Coding Agent Setup</h2>
+
+  <h3>OpenCode</h3>
+  <p>Add to <code>~/.config/opencode/opencode.json</code>:</p>
+  <pre><code>{{
+  "provider": {{
+    "epoxy": {{
+      "name": "Epoxy",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {{"baseURL": "{base}/v1"}},
+      "models": {{
+        "groq-llama-3.1-8b-instant": {{"name": "Groq Llama 3.1 8B"}},
+        "groq-llama-3.3-70b-versatile": {{"name": "Groq Llama 3.3 70B"}},
+        "ollama-deepseek-v4-flash:cloud": {{"name": "Ollama DeepSeek V4 Flash"}}
+      }}
+    }}
+  }}
+}}</code></pre>
+  <p>Run <code>/connect</code> and paste <em>any string</em> as the API key.</p>
+
+  <h3>Kilo Code</h3>
+  <p>In Settings → Providers → Add Provider → <strong>OpenAI Compatible</strong>:</p>
+  <ul>
+    <li><strong>Base URL:</strong> <code>{base}/v1</code></li>
+    <li><strong>API Key:</strong> any string</li>
+  </ul>
+
+  <h3>Cline</h3>
+  <p>In Settings → API Provider → <strong>OpenAI Compatible</strong>:</p>
+  <ul>
+    <li><strong>Base URL:</strong> <code>{base}/v1</code></li>
+    <li><strong>API Key:</strong> any string</li>
+    <li><strong>Model ID:</strong> <code>groq-llama-3.1-8b-instant</code></li>
+  </ul>
+
+  <h3>Claude Code</h3>
+  <p>Claude Code uses the Anthropic API — run a translation proxy:</p>
+  <pre><code>git clone https://github.com/shirayner/cc-proxy
+# Set OPENAI_BASE_URL={base}/v1 in .env
+python start_proxy.py
+
+ANTHROPIC_BASE_URL=http://localhost:8082 ANTHROPIC_API_KEY=any-value claude</code></pre>
+
+  <h2>Python SDK</h2>
+  <pre><code>from openai import OpenAI
+client = OpenAI(base_url="{base}/v1", api_key="any-string")
+response = client.chat.completions.create(
+    model="groq-llama-3.1-8b-instant",
+    messages=[{{"role": "user", "content": "Hello!"}}]
+)</code></pre>
+
+  <p style="margin-top:2rem;color:#8b949e;font-size:.85rem;border-top:1px solid #30363d;padding-top:1rem;">
+    Epoxy — <a href="https://github.com/instax-dutta/epoxy">GitHub</a>
+  </p>
+</div>
+</body>
+</html>"""
 
 
 @app.get("/health")
