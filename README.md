@@ -19,11 +19,12 @@
 <br>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python" alt="Python version">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <img src="https://img.shields.io/badge/Claude%20Code-Ready-4A90D9?logo=anthropic" alt="Claude Code">
+  <img src="https://img.shields.io/badge/OpenCode-Ready-6C47FF" alt="OpenCode">
+  <img src="https://img.shields.io/badge/Cline-Ready-FF6B6B" alt="Cline">
+  <img src="https://img.shields.io/badge/Continue-Ready-000000" alt="Continue">
   <img src="https://img.shields.io/github/actions/workflow/status/instax-dutta/epoxy/docker-publish.yml?logo=github&label=build" alt="Build">
-  <img src="https://img.shields.io/github/v/release/instax-dutta/epoxy?logo=github" alt="Release">
-  <img src="https://img.shields.io/badge/architecture-amd64%20%7C%20arm64-lightgrey" alt="Architecture">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
 
 <br>
