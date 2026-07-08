@@ -1,16 +1,18 @@
 <p align="center">
   <h1 align="center">Epoxy</h1>
-  <p align="center"><em>Universal Free-Tier LLM Key Rotation Proxy</em></p>
+  <p align="center"><em>Lightweight AI Agent Proxy</em></p>
   <p align="center">
-    Pools multiple Groq, Ollama Cloud &amp; Mistral API keys behind a single OpenAI-compatible endpoint.<br>
-    Auto key rotation · 429/402/401 cooldowns · Hot-reload · Pterodactyl &amp; Docker
+    Groq + Ollama + Mistral pooled into one endpoint. Every agent framework works.<br>
+    Auto key rotation · Tool-call routing · Caching · Sticky sessions · Dashboard
   </p>
   <p align="center">
-    <a href="#quickstart"><strong>Quickstart »</strong></a>
+    <a href="#works-with"><strong>Works With</strong></a>
+    ·
+    <a href="#quickstart"><strong>Quickstart</strong></a>
     ·
     <a href="#deployment"><strong>Deployment</strong></a>
     ·
-    <a href="#api"><strong>API Reference</strong></a>
+    <a href="#api"><strong>API</strong></a>
   </p>
 </p>
 
@@ -24,7 +26,25 @@
   <img src="https://img.shields.io/badge/architecture-amd64%20%7C%20arm64-lightgrey" alt="Architecture">
 </p>
 
+<br>
+
+<p align="center">
+  <video src="assets/demo.mp4" width="720" muted loop controls></video>
+</p>
+
 ---
+
+## Works With
+
+| Agent | Status | Setup |
+|---|---|---|
+| Claude Code | Native Anthropic API | `ANTHROPIC_BASE_URL=http://localhost:8080` |
+| OpenCode | OpenAI-compatible | Provider config in `opencode.json` |
+| Kilo Code | OpenAI-compatible | Settings -> Providers |
+| Cline | OpenAI-compatible | Settings -> API Provider |
+| Continue | Chat + Autocomplete | YAML config |
+| Open WebUI | OpenAI-compatible | Settings -> Connections |
+| Any OpenAI SDK | Standard | `base_url` pointing to Epoxy |
 
 ## Quickstart
 
@@ -168,17 +188,15 @@ Or via `kilo.jsonc`:
 
 ### Claude Code
 
-Claude Code uses the Anthropic Messages API, not OpenAI Chat Completions. To use Epoxy models, run a translation proxy alongside it:
+Claude Code uses the Anthropic Messages API. Epoxy has native support - no translation proxy needed:
 
 ```bash
-# Example using claude-code-proxy
-git clone https://github.com/shirayner/cc-proxy
-# Configure OPENAI_API_KEY and OPENAI_BASE_URL=http://<host>:8080/v1 in .env
-python start_proxy.py
-
-# Then point Claude Code at the proxy
-ANTHROPIC_BASE_URL=http://localhost:8082 ANTHROPIC_API_KEY=any-value claude
+export ANTHROPIC_BASE_URL=http://<host>:8080
+export ANTHROPIC_AUTH_TOKEN=any-value  # Epoxy does not validate this
+claude
 ```
+
+Epoxy translates Anthropic format to OpenAI format internally and routes to the best available model. See [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) for details.
 
 ### Cline
 
@@ -188,17 +206,46 @@ In **Cline Settings → API Provider**, select **OpenAI Compatible**:
 - **API Key**: any string
 - **Model ID**: pick any Epoxy model (e.g., `groq-llama-3.1-8b-instant`)
 
+### Continue
+
+Add to `~/.continue/config.yaml`:
+
+```yaml
+models:
+  - name: Epoxy Chat
+    provider: openai
+    model: groq-llama-3.1-8b-instant
+    apiBase: http://<host>:8080/v1
+    apiKey: any-string
+  - name: Epoxy Autocomplete
+    provider: openai
+    model: groq-llama-3.1-8b-instant
+    apiBase: http://<host>:8080/v1
+    apiKey: any-string
+    useLegacyCompletionsEndpoint: true
+    roles:
+      - autocomplete
+```
+
 ---
 
 ## Features
 
-- **Multi-provider pooling** — Combine keys from Groq, Ollama Cloud, and Mistral into one endpoint.
-- **Automatic key rotation** — Round-robin, fill-first, least-used, or random strategies per provider.
-- **Intelligent cooldowns** — Rate-limited (429 → 1h), exhausted (402 → 24h), or auth failures (401 → immediate removal).
-- **Cross-provider fallback** — If the routed provider has no healthy keys, Epoxy falls through to any configured provider.
-- **Model routing** — Keyword-based model → provider dispatch. No config needed; just pick a model name.
-- **Hot-reload** — Edit `.env` and the next request picks up changes. No restart required.
-- **Pterodactyl native** — Import the egg, set keys via File Manager, done.
+- **Multi-provider pooling** - Combine keys from Groq, Ollama Cloud, and Mistral into one endpoint.
+- **Automatic key rotation** - Round-robin, fill-first, least-used, or random strategies per provider.
+- **Intelligent cooldowns** - Rate-limited (429 -> 1h), exhausted (402 -> 24h), or auth failures (401 -> immediate removal).
+- **Cross-provider fallback** - If the routed provider has no healthy keys, Epoxy falls through to any configured provider.
+- **Model routing** - Keyword-based model -> provider dispatch. No config needed; just pick a model name.
+- **Hot-reload** - Edit `.env` and the next request picks up changes. No restart required.
+- **Anthropic Messages API** - Native `/v1/messages` endpoint for Claude Code.
+- **Tool-call routing** - Automatically routes tool-call requests to capable models (Groq, Mistral).
+- **Request caching** - Identical requests return cached responses (5 min TTL).
+- **Sticky sessions** - Same client uses the same model for 30 min.
+- **Reasoning detection** - Auto-detects reasoning-heavy prompts and routes to larger models.
+- **Web dashboard** - Live health, requests, playground, and analytics at `http://localhost:8080/`.
+- **WebSocket live events** - Real-time request flow via `/ws/events`.
+- **Custom providers** - Add your own OpenAI-compatible endpoints (local Ollama, llama.cpp, etc.).
+- **Pterodactyl native** - Import the egg, set keys via File Manager, done.
 
 ---
 
