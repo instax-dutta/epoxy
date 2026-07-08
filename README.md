@@ -29,7 +29,7 @@
 <br>
 
 <p align="center">
-  <video src="assets/demo.mp4" width="720" muted loop controls></video>
+  <video src="https://github.com/instax-dutta/epoxy/raw/main/assets/demo.mp4" width="720" muted loop controls></video>
 </p>
 
 ---
