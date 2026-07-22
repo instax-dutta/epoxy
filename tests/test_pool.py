@@ -256,6 +256,68 @@ def test_has_retried_429_reset_on_exhausted():
     assert key.has_retried_429 is False
 
 
+def test_cloudflare_pool_key_extracts_account_id():
+    from server import PoolKey
+    key_with_acct = PoolKey(value="my-account-id:cf-api-token")
+    assert key_with_acct.cloudflare_account_id == "my-account-id"
+    assert key_with_acct.cloudflare_token == "cf-api-token"
+
+    key_without_acct = PoolKey(value="plain-api-token")
+    assert key_without_acct.cloudflare_account_id is None
+    assert key_without_acct.cloudflare_token == "plain-api-token"
+
+
+def test_transform_to_google_request_basic():
+    from server import transform_to_google_request
+    body = {
+        "model": "google-gemini-2.5-flash",
+        "messages": [
+            {"role": "user", "content": "Hello!"}
+        ],
+        "temperature": 0.5,
+    }
+    result = transform_to_google_request(body)
+    assert result["contents"][0]["parts"][0]["text"] == "Hello!"
+    assert result["generationConfig"]["temperature"] == 0.5
+
+
+def test_transform_to_google_request_with_system():
+    from server import transform_to_google_request
+    body = {
+        "messages": [
+            {"role": "system", "content": "Be helpful."},
+            {"role": "user", "content": "Hi"},
+        ]
+    }
+    result = transform_to_google_request(body)
+    assert result["systemInstruction"]["parts"][0]["text"] == "Be helpful."
+    assert result["contents"][0]["parts"][0]["text"] == "Hi"
+
+
+def test_transform_from_google_response():
+    from server import transform_from_google_response
+    google_resp = {
+        "candidates": [{
+            "content": {"parts": [{"text": "Hello!"}], "role": "model"},
+            "finishReason": "STOP",
+        }],
+        "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 20, "totalTokenCount": 30},
+    }
+    result = transform_from_google_response(google_resp, "gemini-2.5-flash")
+    assert result["object"] == "chat.completion"
+    assert result["choices"][0]["message"]["content"] == "Hello!"
+    assert result["choices"][0]["finish_reason"] == "stop"
+    assert result["usage"]["total_tokens"] == 30
+
+
+def test_get_provider_routes_new_providers():
+    from server import get_provider
+    assert get_provider("cerebras-gemma-4-31b") == "cerebras"
+    assert get_provider("deepseek-chat") == "deepseek"
+    assert get_provider("cloudflare-kimi-k2") == "cloudflare"
+    assert get_provider("google-gemini-2.5-flash") == "google"
+
+
 def test_has_retried_429_reset_on_auth_error():
     from server import PoolKey
     key = PoolKey(value="test")
@@ -294,6 +356,6 @@ def test_build_state_creates_all_providers():
     state = _build_state()
     assert "pools" in state
     assert "clients" in state
-    for name in ("groq", "ollama", "mistral"):
+    for name in ("groq", "ollama", "mistral", "cerebras", "deepseek", "cloudflare", "google"):
         assert name in state["pools"]
         assert name in state["clients"]
